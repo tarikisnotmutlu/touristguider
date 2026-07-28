@@ -3,15 +3,14 @@ import { estimateDurationMin, haversineMeters } from "./geo";
 
 /**
  * Free, no-signup OSRM instances run by the OpenStreetMap.de community. Unlike the
- * public router.project-osrm.org demo (driving only), these expose foot/bike/car
- * profiles, which is what lets us route walking and cycling legs too.
+ * public router.project-osrm.org demo (driving only), these expose foot/car
+ * profiles, which is what lets us route walking legs too.
  *
  * These are best-effort community servers with no uptime SLA — every caller of
  * `fetchRoute` should be ready to fall back to a straight-line estimate on failure.
  */
 const OSRM_BASE: Partial<Record<TransportMode, { serviceUrl: string; profile: string }>> = {
   walk: { serviceUrl: "https://routing.openstreetmap.de/routed-foot", profile: "foot" },
-  cycle: { serviceUrl: "https://routing.openstreetmap.de/routed-bike", profile: "bike" },
   drive: { serviceUrl: "https://routing.openstreetmap.de/routed-car", profile: "car" },
 };
 

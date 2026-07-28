@@ -30,6 +30,7 @@ export function createBlankTrip(): Trip {
     id: genId(),
     title: `Trip — ${today.toLocaleDateString()}`,
     days: [day(1), day(2), day(3)],
+    hiddenGems: [],
   };
 }
 
@@ -63,6 +64,7 @@ function buildDay(seed: SeedDay): Day {
     durationMin: s.durationMin,
     notes: s.notes ?? "",
     checklist: (s.checklist ?? []).map((label) => ({ id: genId(), label, done: false })),
+    completed: false,
   }));
 
   const routes: RouteSegment[] = steps.map((step, i) => {
@@ -207,7 +209,7 @@ export function createDemoTrip(): Trip {
           lat: 41.0473,
           lng: 29.0272,
           durationMin: 60,
-          mode: "bus",
+          mode: "transit",
           category: "cafe",
           checklist: ["Kumpir (loaded baked potato)", "Photo with the Bosphorus Bridge"],
         },
@@ -223,7 +225,7 @@ export function createDemoTrip(): Trip {
           lat: 41.0319,
           lng: 28.9829,
           durationMin: 60,
-          mode: "cycle",
+          mode: "walk",
           category: "shop",
           checklist: ["Browse the vintage shops"],
         },
@@ -232,7 +234,7 @@ export function createDemoTrip(): Trip {
           lat: 41.0422,
           lng: 29.0072,
           durationMin: 50,
-          mode: "cycle",
+          mode: "walk",
           category: "viewpoint",
         },
         {
@@ -249,7 +251,7 @@ export function createDemoTrip(): Trip {
           lat: 41.0,
           lng: 28.82,
           durationMin: 0,
-          mode: "metro",
+          mode: "transit",
           category: "other",
           notes: "Buffer time built in for check-in — don't linger too long at the palace!",
         },
@@ -262,5 +264,6 @@ export function createDemoTrip(): Trip {
     title: "Istanbul, 4 Days",
     friendName: "Alex",
     days: days.map(buildDay),
+    hiddenGems: [],
   };
 }

@@ -14,7 +14,7 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="flex h-dvh w-full items-center justify-center bg-slate-100 text-slate-500">
+    <div className="flex h-dvh w-full items-center justify-center bg-stone-50 text-stone-400">
       Loading itinerary…
     </div>
   );

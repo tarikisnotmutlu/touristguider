@@ -14,12 +14,13 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@vercel/blob": "^2.6.1",
     "clsx": "^2.1.1",
+    "framer-motion": "^12.43.0",
     "immer": "^11.1.15",
     "maplibre-gl": "^6.0.0",
     "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "vaul": "^1.1.2",
+    "react-map-gl": "^8.1.1",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

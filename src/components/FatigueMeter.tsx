@@ -1,34 +1,54 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useTripStore } from "@/store/useTripStore";
-import { totalWalkingMeters } from "@/lib/time";
+import { completedWalkingMeters } from "@/lib/time";
+
+/** Rough average stride: ~1,300 steps per kilometer walked. */
+const STEPS_PER_METER = 1.3;
+const MAX_STEPS_FOR_BAR = 15000;
 
 const LEVELS = [
-  { max: 2000, label: "Fresh legs 🌱", color: "bg-green-500" },
-  { max: 5000, label: "Warmed up 🚶", color: "bg-lime-500" },
-  { max: 8000, label: "Getting real 😅", color: "bg-amber-500" },
-  { max: 12000, label: "Blister o'clock 🩹", color: "bg-orange-500" },
-  { max: Infinity, label: "Send help 🥵", color: "bg-red-500" },
+  { maxSteps: 2600, label: "Fresh legs, big dreams 🌱", color: "var(--color-sage-400)" },
+  { maxSteps: 6500, label: "Warmed up and wandering 🚶", color: "var(--color-sage-600)" },
+  { maxSteps: 10400, label: "Feeling those cobblestones 😅", color: "var(--color-terracotta-400)" },
+  { maxSteps: 15600, label: "Blister o'clock 🩹", color: "var(--color-terracotta-600)" },
+  { maxSteps: Infinity, label: "Send snacks and a taxi 🥵", color: "var(--color-terracotta-800)" },
 ];
 
 export default function FatigueMeter({ dayId }: { dayId: string }) {
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
   if (!day) return null;
 
-  const meters = totalWalkingMeters(day);
-  const level = LEVELS.find((l) => meters <= l.max)!;
-  const pct = Math.min(100, (meters / 12000) * 100);
+  const meters = completedWalkingMeters(day);
+  const steps = Math.round(meters * STEPS_PER_METER);
+  const level = LEVELS.find((l) => steps <= l.maxSteps)!;
+  const pct = Math.min(100, (steps / MAX_STEPS_FOR_BAR) * 100);
 
   return (
-    <div className="px-3 py-2 text-xs">
-      <div className="mb-1 flex items-center justify-between text-slate-500">
-        <span>Tourist Fatigue Meter</span>
-        <span className="font-medium">{(meters / 1000).toFixed(1)} km walked</span>
+    <div className="glass-panel mx-3 mb-2 rounded-2xl px-3.5 py-2.5 text-xs shadow-sm">
+      <div className="mb-1.5 flex items-center justify-between text-stone-500">
+        <span className="font-medium tracking-tight">Tourist Fatigue Meter</span>
+        <span className="font-semibold text-stone-700">{steps.toLocaleString()} steps</span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full ${level.color} transition-all`} style={{ width: `${pct}%` }} />
+      <div className="h-2 w-full overflow-hidden rounded-full bg-stone-200/70">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: level.color }}
+          initial={false}
+          animate={{ width: `${pct}%` }}
+          transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+        />
       </div>
-      <p className="mt-1 text-slate-500">{level.label}</p>
+      <motion.p
+        key={level.label}
+        initial={{ opacity: 0, y: -2 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+        className="mt-1.5 text-stone-500"
+      >
+        {level.label}
+      </motion.p>
     </div>
   );
 }

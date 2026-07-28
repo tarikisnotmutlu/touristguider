@@ -30,10 +30,10 @@ export default function StepCard() {
       {found && (
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-lg font-bold text-slate-800">{found.step.name}</h3>
+            <h3 className="text-lg font-bold tracking-tight text-stone-800">{found.step.name}</h3>
             <button
               onClick={() => setActiveStepId(null)}
-              className="shrink-0 text-slate-400 hover:text-slate-600"
+              className="shrink-0 text-stone-400 hover:text-stone-600"
               type="button"
             >
               ✕
@@ -41,7 +41,7 @@ export default function StepCard() {
           </div>
 
           <div>
-            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Category</h4>
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-400">Category</h4>
             <div className="flex flex-wrap gap-1.5">
               {ALL_CATEGORIES.map((cat) => (
                 <button
@@ -52,19 +52,19 @@ export default function StepCard() {
                   className={clsx(
                     "flex items-center gap-1 rounded-full border px-2 py-1 text-sm",
                     found.step.category === cat
-                      ? "border-indigo-400 bg-indigo-50"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
+                      ? "border-sage-400 bg-sage-50"
+                      : "border-stone-200 bg-white hover:bg-stone-50"
                   )}
                 >
                   <span>{CATEGORY_ICON[cat]}</span>
-                  <span className="text-xs text-slate-600">{CATEGORY_LABEL[cat]}</span>
+                  <span className="text-xs text-stone-600">{CATEGORY_LABEL[cat]}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-400">
               Must try / Things to do
             </h4>
             <ul className="flex flex-col gap-1.5">
@@ -74,13 +74,14 @@ export default function StepCard() {
                     type="checkbox"
                     checked={item.done}
                     onChange={() => toggleChecklistItem(found!.dayId, found!.step.id, item.id)}
+                    className="accent-sage-600"
                   />
-                  <span className={item.done ? "flex-1 text-slate-400 line-through" : "flex-1 text-slate-700"}>
+                  <span className={item.done ? "flex-1 text-stone-400 line-through" : "flex-1 text-stone-700"}>
                     {item.label}
                   </span>
                   <button
                     onClick={() => removeChecklistItem(found!.dayId, found!.step.id, item.id)}
-                    className="text-slate-300 hover:text-red-500"
+                    className="text-stone-300 hover:text-terracotta-600"
                     type="button"
                   >
                     ✕
@@ -88,7 +89,7 @@ export default function StepCard() {
                 </li>
               ))}
               {found.step.checklist.length === 0 && (
-                <li className="text-sm text-slate-400">Nothing added yet.</li>
+                <li className="text-sm text-stone-400">Nothing added yet.</li>
               )}
             </ul>
             <form
@@ -103,21 +104,24 @@ export default function StepCard() {
                 value={newItem}
                 onChange={(e) => setNewItem(e.target.value)}
                 placeholder="e.g. Try the baklava"
-                className="flex-1 rounded border border-slate-200 px-2 py-1 text-sm"
+                className="flex-1 rounded-full border border-stone-200 px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
               />
-              <button type="submit" className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
+              <button
+                type="submit"
+                className="rounded-full bg-sage-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-sage-700"
+              >
                 Add
               </button>
             </form>
           </div>
 
           <div>
-            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</h4>
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-400">Notes</h4>
             <textarea
               value={found.step.notes}
               onChange={(e) => updateStep(found!.dayId, found!.step.id, { notes: e.target.value })}
               rows={3}
-              className="w-full rounded border border-slate-200 p-2 text-sm"
+              className="w-full rounded-2xl border border-stone-200 p-2.5 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
               placeholder="Anything to remember about this stop…"
             />
           </div>

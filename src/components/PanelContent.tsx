@@ -23,10 +23,10 @@ export default function PanelContent() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 pt-1 pb-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/70 px-3 pt-1 pb-2">
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-bold text-slate-800">{trip.title}</h1>
-          <p className="truncate text-[11px] text-slate-400">
+          <h1 className="truncate text-sm font-bold tracking-tight text-stone-800">{trip.title}</h1>
+          <p className="truncate text-[11px] text-stone-400">
             {trip.friendName ? `for ${trip.friendName} · ` : ""}
             {SAVE_LABEL[saveState]}
           </p>
@@ -48,7 +48,7 @@ export default function PanelContent() {
             <DayStartEditor dayId={day.id} />
             <FatigueMeter dayId={day.id} />
           </div>
-          <div className="flex-1 overflow-y-auto overscroll-contain" data-vaul-no-drag>
+          <div className="flex-1 overflow-y-auto overscroll-contain">
             <Timeline dayId={day.id} />
           </div>
         </>

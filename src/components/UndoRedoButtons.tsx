@@ -36,7 +36,7 @@ export default function UndoRedoButtons() {
         disabled={!canUndo}
         type="button"
         title="Undo (Ctrl/Cmd+Z)"
-        className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 disabled:opacity-30"
       >
         ↩️
       </button>
@@ -45,7 +45,7 @@ export default function UndoRedoButtons() {
         disabled={!canRedo}
         type="button"
         title="Redo (Ctrl/Cmd+Shift+Z)"
-        className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 disabled:opacity-30"
       >
         ↪️
       </button>

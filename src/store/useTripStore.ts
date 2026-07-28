@@ -6,6 +6,7 @@ import { estimateDurationMin, haversineMeters } from "@/lib/geo";
 import { recomputeDayTimes } from "@/lib/time";
 import { genId } from "@/lib/id";
 import { pointBefore } from "@/lib/dayHelpers";
+import { normalizeTrip } from "@/lib/normalize";
 
 const HISTORY_LIMIT = 50;
 
@@ -48,6 +49,7 @@ interface TripState {
   trip: Trip;
   activeDayIndex: number;
   activeStepId: string | null;
+  activeGemId: string | null;
   saveState: SaveState;
   past: Trip[];
   future: Trip[];
@@ -55,6 +57,7 @@ interface TripState {
   setTrip: (trip: Trip) => void;
   setActiveDayIndex: (index: number) => void;
   setActiveStepId: (id: string | null) => void;
+  setActiveGemId: (id: string | null) => void;
   setSaveState: (state: SaveState) => void;
 
   undo: () => void;
@@ -74,12 +77,14 @@ interface TripState {
     stepId: string,
     patch: Partial<Pick<Step, "name" | "notes" | "durationMin" | "category">>
   ) => void;
+  toggleStepCompleted: (dayId: string, stepId: string) => void;
 
   toggleChecklistItem: (dayId: string, stepId: string, itemId: string) => void;
   addChecklistItem: (dayId: string, stepId: string, label: string) => void;
   removeChecklistItem: (dayId: string, stepId: string, itemId: string) => void;
 
   setSegmentMode: (dayId: string, segIndex: number, mode: TransportMode) => void;
+  setTransitLine: (dayId: string, segIndex: number, line: string) => void;
   setRouteFound: (
     dayId: string,
     segIndex: number,
@@ -99,6 +104,9 @@ interface TripState {
   ) => void;
   removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
   resetRouteToAuto: (dayId: string, segIndex: number) => void;
+
+  addHiddenGem: (point: LatLng, note: string) => void;
+  removeHiddenGem: (id: string) => void;
 }
 
 function findDay(trip: Trip, dayId: string) {
@@ -106,18 +114,27 @@ function findDay(trip: Trip, dayId: string) {
   return { index, day: trip.days[index] };
 }
 
+/** Every content-mutating action calls this first, snapshotting the trip as it
+ *  was *before* the mutation onto the undo stack and clearing any redo stack. */
+function recordHistory(state: { trip: Trip; past: Trip[]; future: Trip[] }) {
+  state.past.push(snapshotTrip(state.trip));
+  if (state.past.length > HISTORY_LIMIT) state.past.shift();
+  state.future = [];
+}
+
 export const useTripStore = create<TripState>()(
   immer((set) => ({
-    trip: { id: genId(), title: "New Trip", days: [] },
+    trip: { id: genId(), title: "New Trip", days: [], hiddenGems: [] },
     activeDayIndex: 0,
     activeStepId: null,
+    activeGemId: null,
     saveState: "idle",
     past: [],
     future: [],
 
     setTrip: (trip) =>
       set((state) => {
-        state.trip = trip;
+        state.trip = normalizeTrip(trip);
         state.activeDayIndex = 0;
         state.activeStepId = null;
         state.past = [];
@@ -138,6 +155,11 @@ export const useTripStore = create<TripState>()(
     setActiveStepId: (id) =>
       set((state) => {
         state.activeStepId = id;
+      }),
+
+    setActiveGemId: (id) =>
+      set((state) => {
+        state.activeGemId = id;
       }),
 
     undo: () =>
@@ -166,9 +188,7 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         day.startTime = value;
         recalcDay(day);
       }),
@@ -177,9 +197,7 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         day.startPoint = point;
         day.routes = rebuildRoutes(day);
         recalcDay(day);
@@ -189,9 +207,7 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         const from = day.steps.length > 0 ? day.steps[day.steps.length - 1] : day.startPoint;
         const step: Step = {
           id: genId(),
@@ -202,6 +218,7 @@ export const useTripStore = create<TripState>()(
           durationMin: 60,
           notes: "",
           checklist: [],
+          completed: false,
         };
         day.steps.push(step);
         day.routes.push(makeRoute(from, place, "walk"));
@@ -212,9 +229,7 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         day.steps = day.steps.filter((s) => s.id !== stepId);
         day.routes = rebuildRoutes(day);
         recalcDay(day);
@@ -232,9 +247,7 @@ export const useTripStore = create<TripState>()(
           toIndex >= steps.length
         )
           return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         const [moved] = steps.splice(fromIndex, 1);
         steps.splice(toIndex, 0, moved);
         day.routes = rebuildRoutes(day);
@@ -247,11 +260,18 @@ export const useTripStore = create<TripState>()(
         if (!day) return;
         const step = day.steps.find((s) => s.id === stepId);
         if (!step) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         Object.assign(step, patch);
         recalcDay(day);
+      }),
+
+    toggleStepCompleted: (dayId, stepId) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const step = day?.steps.find((s) => s.id === stepId);
+        if (!step) return;
+        recordHistory(state);
+        step.completed = !step.completed;
       }),
 
     toggleChecklistItem: (dayId, stepId, itemId) =>
@@ -260,9 +280,7 @@ export const useTripStore = create<TripState>()(
         const step = day?.steps.find((s) => s.id === stepId);
         const item = step?.checklist.find((c) => c.id === itemId);
         if (!item) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         item.done = !item.done;
       }),
 
@@ -271,9 +289,7 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
         if (!step || !label.trim()) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         step.checklist.push({ id: genId(), label: label.trim(), done: false });
       }),
 
@@ -282,9 +298,7 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
         if (!step) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         step.checklist = step.checklist.filter((c) => c.id !== itemId);
       }),
 
@@ -293,15 +307,22 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!day || !route) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         const from = pointBefore(day, segIndex);
         const to = day.steps[segIndex];
         const fresh = makeRoute(from, to, mode);
         fresh.resetNonce = route.resetNonce + 1;
         day.routes[segIndex] = fresh;
         recalcDay(day);
+      }),
+
+    setTransitLine: (dayId, segIndex, line) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!route) return;
+        recordHistory(state);
+        route.transitLine = line.trim() || undefined;
       }),
 
     setRouteFound: (dayId, segIndex, info) =>
@@ -320,9 +341,7 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!route) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         route.manualWaypoints.splice(insertAt, 0, point);
         route.isManual = true;
       }),
@@ -332,9 +351,7 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!route || !route.manualWaypoints[waypointIndex]) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         route.manualWaypoints[waypointIndex] = point;
       }),
 
@@ -343,9 +360,7 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!route) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         route.manualWaypoints.splice(waypointIndex, 1);
         route.isManual = route.manualWaypoints.length > 0;
       }),
@@ -355,15 +370,31 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!day || !route) return;
-        state.past.push(snapshotTrip(state.trip));
-        if (state.past.length > HISTORY_LIMIT) state.past.shift();
-        state.future = [];
+        recordHistory(state);
         const from = pointBefore(day, segIndex);
         const to = day.steps[segIndex];
         const fresh = makeRoute(from, to, route.mode);
         fresh.resetNonce = route.resetNonce + 1;
         day.routes[segIndex] = fresh;
         recalcDay(day);
+      }),
+
+    addHiddenGem: (point, note) =>
+      set((state) => {
+        recordHistory(state);
+        state.trip.hiddenGems.push({
+          id: genId(),
+          lat: point.lat,
+          lng: point.lng,
+          note: note.trim(),
+          createdAt: Date.now(),
+        });
+      }),
+
+    removeHiddenGem: (id) =>
+      set((state) => {
+        recordHistory(state);
+        state.trip.hiddenGems = state.trip.hiddenGems.filter((g) => g.id !== id);
       }),
   }))
 );

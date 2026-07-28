@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
 
@@ -15,13 +16,20 @@ export default function DayTabs() {
           key={day.id}
           onClick={() => setActiveDayIndex(i)}
           className={clsx(
-            "shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition",
+            "relative shrink-0 rounded-full px-4 py-1.5 text-sm font-medium tracking-tight transition-colors",
             i === activeDayIndex
-              ? "bg-indigo-600 text-white shadow-sm"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              ? "text-white"
+              : "bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-800"
           )}
         >
-          {day.label}
+          {i === activeDayIndex && (
+            <motion.div
+              layoutId="day-tab-active"
+              transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+              className="absolute inset-0 rounded-full bg-sage-600 shadow-sm"
+            />
+          )}
+          <span className="relative">{day.label}</span>
         </button>
       ))}
     </div>

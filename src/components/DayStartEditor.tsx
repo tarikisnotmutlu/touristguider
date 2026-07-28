@@ -13,7 +13,7 @@ export default function DayStartEditor({ dayId }: { dayId: string }) {
   if (!day) return null;
 
   return (
-    <div className="flex flex-col gap-2 border-b border-slate-100 px-3 py-2.5">
+    <div className="flex flex-col gap-2 border-b border-stone-200/70 px-3 py-2.5">
       <div className="flex items-center gap-2">
         <span className="text-lg leading-none">🏁</span>
         {editingPoint ? (
@@ -28,20 +28,21 @@ export default function DayStartEditor({ dayId }: { dayId: string }) {
           </div>
         ) : (
           <button
-            className="flex-1 truncate text-left text-sm font-medium text-slate-700 hover:underline"
+            type="button"
+            className="flex-1 truncate text-left text-sm font-medium tracking-tight text-stone-700 hover:text-sage-700"
             onClick={() => setEditingPoint(true)}
           >
             {day.startPoint.name}
           </button>
         )}
       </div>
-      <div className="flex items-center gap-2 pl-6 text-sm text-slate-500">
+      <div className="flex items-center gap-2 pl-6 text-sm text-stone-500">
         <span>Start time</span>
         <input
           type="time"
           value={day.startTime}
           onChange={(e) => setDayStartTime(day.id, e.target.value)}
-          className="rounded border border-slate-200 px-2 py-1"
+          className="rounded-lg border border-stone-200 px-2 py-1 text-stone-900"
         />
       </div>
     </div>

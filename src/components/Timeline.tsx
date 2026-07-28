@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -30,29 +31,30 @@ export default function Timeline({ dayId }: { dayId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-0.5 px-3 pb-4">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={day.steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-          {day.steps.map((step, i) => (
-            <div key={step.id}>
-              <CommuteRow dayId={day.id} segIndex={i} />
-              <StepRow dayId={day.id} step={step} index={i} />
-            </div>
-          ))}
-        </SortableContext>
-      </DndContext>
+    <div className="px-3 pb-4">
+      {/* A shared 3-column grid (time / line+dot / card) so CommuteRow and
+          StepRow — each emitting exactly 3 grid cells — line up automatically. */}
+      <div className="grid grid-cols-[42px_28px_1fr] gap-x-1.5">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={day.steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            {day.steps.map((step, i) => (
+              <Fragment key={step.id}>
+                <CommuteRow dayId={day.id} segIndex={i} />
+                <StepRow dayId={day.id} step={step} index={i} />
+              </Fragment>
+            ))}
+          </SortableContext>
+        </DndContext>
+      </div>
 
       {day.steps.length === 0 && (
-        <p className="py-4 text-center text-sm text-slate-400">
+        <p className="py-4 text-center text-sm text-stone-400">
           No stops yet — search below to add the first one.
         </p>
       )}
 
       <div className="mt-3">
-        <PlaceSearch
-          placeholder="Add a stop…"
-          onSelect={(place) => addStep(day.id, place)}
-        />
+        <PlaceSearch placeholder="Add a stop…" onSelect={(place) => addStep(day.id, place)} />
       </div>
     </div>
   );

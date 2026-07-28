@@ -16,10 +16,8 @@ export function haversineMeters(a: LatLng, b: LatLng): number {
 /** Rough average speeds (km/h) used only as an instant placeholder before OSRM responds. */
 const AVERAGE_SPEED_KMH: Record<TransportMode, number> = {
   walk: 4.5,
-  cycle: 15,
   drive: 28,
-  bus: 20,
-  metro: 32,
+  transit: 26,
   ferry: 18,
 };
 

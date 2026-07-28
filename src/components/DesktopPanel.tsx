@@ -4,7 +4,7 @@ import PanelContent from "./PanelContent";
 
 export default function DesktopPanel() {
   return (
-    <div className="hidden h-full w-[420px] shrink-0 flex-col border-r border-slate-200 bg-white shadow-xl md:flex">
+    <div className="glass-panel hidden h-full w-[400px] shrink-0 flex-col shadow-2xl lg:flex">
       <PanelContent />
     </div>
   );

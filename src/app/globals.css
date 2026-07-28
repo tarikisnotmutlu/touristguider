@@ -1,22 +1,38 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafaf9;
+  --foreground: #292524;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-inter);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Muted, premium sage green — primary accent. */
+  --color-sage-50: #f4f6f2;
+  --color-sage-100: #e6ebe1;
+  --color-sage-200: #cdd8c4;
+  --color-sage-300: #aec0a1;
+  --color-sage-400: #8ba37d;
+  --color-sage-500: #6f8a61;
+  --color-sage-600: #566d4a;
+  --color-sage-700: #46583c;
+  --color-sage-800: #3a4832;
+  --color-sage-900: #313c2a;
+
+  /* Muted terracotta / burnt clay — secondary accent. */
+  --color-terracotta-50: #fbf3ee;
+  --color-terracotta-100: #f5e1d5;
+  --color-terracotta-200: #e9c1a7;
+  --color-terracotta-300: #dc9b73;
+  --color-terracotta-400: #cd7a4c;
+  --color-terracotta-500: #bd5e31;
+  --color-terracotta-600: #9d4826;
+  --color-terracotta-700: #7d3a21;
+  --color-terracotta-800: #66301e;
+  --color-terracotta-900: #55291b;
 }
 
 html,
@@ -29,14 +45,34 @@ body,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 .maplibregl-ctrl-attrib {
   font-size: 10px !important;
 }
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib a {
+  color: #78716c !important;
+}
+.maplibregl-ctrl-group {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 4px 16px rgba(41, 37, 36, 0.12) !important;
+}
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+}
 
-/* Our own category step markers (see domMarkers.ts). */
+/* Reusable frosted-glass surface for panels, cards, and modals. */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Our own category step markers (see StepMarker.tsx). */
 .tg-marker {
   position: relative;
   display: flex;
@@ -46,7 +82,7 @@ body {
   height: 34px;
   border-radius: 9999px;
   border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(41, 37, 36, 0.35);
   cursor: pointer;
   transition:
     transform 0.15s ease,
@@ -55,7 +91,7 @@ body {
 
 .tg-marker-active {
   transform: scale(1.15);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 14px rgba(41, 37, 36, 0.45);
   z-index: 5;
 }
 
@@ -75,7 +111,7 @@ body {
   height: 15px;
   padding: 0 3px;
   border-radius: 9999px;
-  background: #111827;
+  background: #292524;
   color: white;
   font-size: 9px;
   font-weight: 700;
@@ -89,11 +125,26 @@ body {
   width: 34px;
   height: 34px;
   border-radius: 9999px;
-  background: #111827;
+  background: #292524;
   color: white;
   font-size: 16px;
   border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(41, 37, 36, 0.35);
+}
+
+.tg-gem-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--color-terracotta-400), var(--color-terracotta-600));
+  color: white;
+  font-size: 15px;
+  border: 2px solid white;
+  box-shadow: 0 2px 10px rgba(189, 94, 49, 0.5);
+  cursor: pointer;
 }
 
 /* Small drag-handle marker for a user-added via point on a manually edited route. */
@@ -102,7 +153,7 @@ body {
   height: 14px;
   border-radius: 9999px;
   background: white;
-  border: 3px solid #111827;
+  border: 3px solid #292524;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   cursor: grab;
 }
@@ -112,7 +163,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 9999px;
-  background: #fbbf24;
+  background: var(--color-terracotta-400);
   border: 3px solid white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }

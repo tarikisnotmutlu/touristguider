@@ -31,8 +31,12 @@ export function recomputeDayTimes(day: Day): Step[] {
   return steps;
 }
 
-export function totalWalkingMeters(day: Day): number {
-  return day.routes
-    .filter((r) => r.mode === "walk")
-    .reduce((sum, r) => sum + (r.distanceM ?? 0), 0);
+/** Sums the distance of walking legs whose destination stop has been checked
+ *  off — used to simulate "steps taken so far" for the fatigue meter. */
+export function completedWalkingMeters(day: Day): number {
+  return day.routes.reduce((sum, route, i) => {
+    const destination = day.steps[i];
+    if (route.mode !== "walk" || !destination?.completed) return sum;
+    return sum + (route.distanceM ?? 0);
+  }, 0);
 }

@@ -22,11 +22,16 @@ interface PlaceSearchProps {
   }) => void;
 }
 
+// Soft bias toward Istanbul (left,top,right,bottom) — a strictly free Nominatim
+// param, no API key. `bounded=0` keeps it a *preference* rather than a hard
+// restriction, so a search still works if you're planning a day trip out of town.
+const ISTANBUL_VIEWBOX = "28.45,41.25,29.45,40.80";
+
 /**
- * Free-tier autocomplete against Nominatim's public search API — no API key.
- * For heavier production traffic Nominatim's usage policy asks for a proxy with a
- * proper User-Agent/referer and local caching; fine to call directly client-side
- * at this app's scale.
+ * Free-tier autocomplete against Nominatim's public search API — no API key,
+ * no credit card. For heavier production traffic Nominatim's usage policy asks
+ * for a proxy with a proper User-Agent/referer and local caching; fine to call
+ * directly client-side at this app's scale.
  */
 export default function PlaceSearch({ placeholder = "Search a place…", onSelect }: PlaceSearchProps) {
   const [query, setQuery] = useState("");
@@ -48,7 +53,7 @@ export default function PlaceSearch({ placeholder = "Search a place…", onSelec
       abortRef.current = controller;
       setLoading(true);
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&viewbox=${ISTANBUL_VIEWBOX}&bounded=0&q=${encodeURIComponent(
           query
         )}`;
         const res = await fetch(url, { signal: controller.signal });
@@ -72,18 +77,18 @@ export default function PlaceSearch({ placeholder = "Search a place…", onSelec
         onFocus={() => visibleResults.length > 0 && setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+        className="w-full rounded-full border border-stone-200 bg-white/80 px-3.5 py-2 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
       />
-      {loading && <span className="absolute right-3 top-2.5 text-xs text-slate-400">…</span>}
+      {loading && <span className="absolute right-3.5 top-2.5 text-xs text-stone-400">…</span>}
       {open && visibleResults.length > 0 && (
-        <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+        <ul className="glass-panel absolute z-30 mt-1.5 max-h-64 w-full overflow-y-auto rounded-2xl shadow-lg">
           {visibleResults.map((r) => {
             const category = inferCategoryFromNominatim(r.class, r.type);
             return (
               <li key={r.place_id}>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 truncate px-3 py-2 text-left text-sm hover:bg-indigo-50"
+                  className="flex w-full items-center gap-2 truncate px-3.5 py-2 text-left text-sm text-stone-700 hover:bg-sage-50"
                   onClick={() => {
                     onSelect({
                       name: r.display_name.split(",")[0],

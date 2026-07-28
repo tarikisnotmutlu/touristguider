@@ -1,9 +1,10 @@
 import type { PlaceCategory } from "./categories";
 
-export type TransportMode = "walk" | "drive" | "metro" | "bus" | "ferry" | "cycle";
+export type TransportMode = "walk" | "drive" | "transit" | "ferry";
 
-/** Modes we can actually route via OSRM road/path networks. */
-export const ROUTABLE_MODES: TransportMode[] = ["walk", "drive", "cycle"];
+/** Modes we can actually route via OSRM road networks. Transit/ferry get a
+ *  schematic straight line instead — there's no free transit-routing API. */
+export const ROUTABLE_MODES: TransportMode[] = ["walk", "drive"];
 
 export interface LatLng {
   lat: number;
@@ -26,6 +27,8 @@ export interface Step {
   durationMin: number;
   notes: string;
   checklist: ChecklistItem[];
+  /** Marked done as the visitor works through the day. */
+  completed: boolean;
   /** Computed by the time-recalculation engine, not user-edited directly. */
   arrival?: string;
   departure?: string;
@@ -43,8 +46,10 @@ export interface RouteSegment {
   manualWaypoints: LatLng[];
   /** Last known route geometry, kept for non-routable (transit) segments. */
   geometry: LatLng[];
-  /** Bumped to force RouteLayer to rebuild from scratch (used by "reset to auto"). */
+  /** Bumped to force the map layer to rebuild from scratch (used by "reset to auto"). */
   resetNonce: number;
+  /** User-entered line/route name for a "transit" segment, e.g. "M2 Metro to Taksim". */
+  transitLine?: string;
 }
 
 export interface Day {
@@ -58,9 +63,18 @@ export interface Day {
   routes: RouteSegment[];
 }
 
+export interface HiddenGem {
+  id: string;
+  lat: number;
+  lng: number;
+  note: string;
+  createdAt: number;
+}
+
 export interface Trip {
   id: string;
   title: string;
   friendName?: string;
   days: Day[];
+  hiddenGems: HiddenGem[];
 }
