@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+@import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body,
+#__next {
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* leaflet-routing-machine ships its own itinerary panel + default styling; we drive
+   the whole UI ourselves, so the widget's chrome is fully suppressed here. */
+.leaflet-routing-container,
+.leaflet-routing-alt {
+  display: none !important;
+}
+
+.leaflet-control-attribution {
+  font-size: 10px !important;
+}
+
+/* Our own numbered step markers (see MapView.tsx divIcon HTML). */
+.tg-step-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  color: white;
+  font-weight: 700;
+  font-size: 13px;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.tg-start-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  background: #111827;
+  color: white;
+  font-size: 16px;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Small drag-handle marker for a user-added via point on a manually edited route. */
+.tg-via-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: white;
+  border: 3px solid #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
