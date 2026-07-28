@@ -6,6 +6,10 @@ import MobileSheet from "./MobileSheet";
 import StepCard from "./StepCard";
 import PanicButton from "./PanicButton";
 import HiddenGemModal from "./HiddenGemModal";
+import JourneyEngine from "./JourneyEngine";
+import Hud from "./Hud";
+import CatToast from "./CatToast";
+import ArrivalCelebration from "./ArrivalCelebration";
 
 // maplibre-gl needs `window`, so the whole map tree is client-only and loaded
 // without SSR.
@@ -25,9 +29,13 @@ export default function AppShell() {
       </div>
 
       <MobileSheet />
+      <Hud />
+      <CatToast />
       <StepCard />
       <HiddenGemModal />
+      <ArrivalCelebration />
       <PanicButton />
+      <JourneyEngine />
     </div>
   );
 }

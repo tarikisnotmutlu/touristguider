@@ -4,10 +4,11 @@ import { useTripStore } from "@/store/useTripStore";
 import DayTabs from "./DayTabs";
 import DayStartEditor from "./DayStartEditor";
 import Timeline from "./Timeline";
-import FatigueMeter from "./FatigueMeter";
+import StartDayButton from "./StartDayButton";
 import ShareButton from "./ShareButton";
 import UndoRedoButtons from "./UndoRedoButtons";
 import TripMenu from "./TripMenu";
+import EditModeToggle from "./EditModeToggle";
 
 const SAVE_LABEL = {
   idle: "",
@@ -32,6 +33,7 @@ export default function PanelContent() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <EditModeToggle />
           <UndoRedoButtons />
           <TripMenu />
           <ShareButton />
@@ -46,7 +48,7 @@ export default function PanelContent() {
         <>
           <div className="shrink-0">
             <DayStartEditor dayId={day.id} />
-            <FatigueMeter dayId={day.id} />
+            <StartDayButton />
           </div>
           <div className="flex-1 overflow-y-auto overscroll-contain">
             <Timeline dayId={day.id} />

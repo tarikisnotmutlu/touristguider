@@ -13,13 +13,21 @@ import MapGL, {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useTripStore } from "@/store/useTripStore";
+import { useJourneyStore } from "@/store/useJourneyStore";
 import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
 import { ROUTABLE_MODES, type LatLng } from "@/lib/types";
 import { pointBefore } from "@/lib/dayHelpers";
 import { fetchRoute } from "@/lib/osrmHttp";
 import { boundsOf, estimateDurationMin, haversineMeters, projectPointOntoPolyline } from "@/lib/geo";
 import { TRANSPORT_COLOR } from "@/lib/transport";
-import { StartMarker, StepMarker, ViaMarker, GhostMarker, GemMarker } from "./MapMarkers";
+import {
+  StartMarker,
+  StepMarker,
+  ViaMarker,
+  GhostMarker,
+  GemMarker,
+  LiveLocationMarker,
+} from "./MapMarkers";
 import HiddenGemCreateForm from "./HiddenGemCreateForm";
 
 function lineSourceId(dayId: string, segIndex: number) {
@@ -59,7 +67,19 @@ export default function MapView() {
   const activeStepId = useTripStore((s) => s.activeStepId);
   const setActiveStepId = useTripStore((s) => s.setActiveStepId);
   const setActiveGemId = useTripStore((s) => s.setActiveGemId);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
+  const liveLocation = useJourneyStore((s) => s.liveLocation);
   const day = trip.days[activeDayIndex];
+
+  // ---- gently pan the camera to follow the live location while tracking ----
+  useEffect(() => {
+    if (!ready || !liveLocation || !mapRef.current) return;
+    try {
+      mapRef.current.easeTo({ center: [liveLocation.lng, liveLocation.lat], duration: 1200 });
+    } catch {
+      // ignore — same defensive rationale as the fitBounds call below
+    }
+  }, [ready, liveLocation]);
 
   const hitLayerIds = useMemo(() => {
     if (!day) return [];
@@ -323,21 +343,31 @@ export default function MapView() {
             <GemMarker />
           </Marker>
         ))}
+
+        {liveLocation && (
+          <Marker longitude={liveLocation.lng} latitude={liveLocation.lat} anchor="center">
+            <LiveLocationMarker />
+          </Marker>
+        )}
       </MapGL>
 
-      {/* Desktop-only "creator mode" control for dropping a Hidden Gem pin.
-          Positioned top-right (below the zoom control) rather than top-left,
-          since the 400px glass sidebar covers the map's top-left corner. */}
-      <button
-        onClick={() => setPlacingGem((v) => !v)}
-        type="button"
-        className={
-          "glass-panel absolute right-4 top-20 hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium shadow-lg lg:flex " +
-          (placingGem ? "ring-2 ring-terracotta-400 text-terracotta-700" : "text-stone-600 hover:text-stone-900")
-        }
-      >
-        💎 {placingGem ? "Click the map to drop it…" : "Drop Hidden Gem"}
-      </button>
+      {/* Desktop-only, edit-mode-only "creator mode" control for dropping a
+          Hidden Gem pin. Positioned top-right (below the zoom control) rather
+          than top-left, since the 400px glass sidebar covers that corner. */}
+      {isEditMode && (
+        <button
+          onClick={() => setPlacingGem((v) => !v)}
+          type="button"
+          className={
+            "glass-panel absolute right-4 top-20 hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium shadow-lg lg:flex " +
+            (placingGem
+              ? "ring-2 ring-terracotta-400 text-terracotta-700"
+              : "text-stone-600 hover:text-stone-900")
+          }
+        >
+          💎 {placingGem ? "Click the map to drop it…" : "Drop Hidden Gem"}
+        </button>
+      )}
 
       {pendingGemPoint && (
         <HiddenGemCreateForm

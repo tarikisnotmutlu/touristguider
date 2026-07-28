@@ -5,6 +5,7 @@ import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSe
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useTripStore } from "@/store/useTripStore";
+import { useJourneyStore } from "@/store/useJourneyStore";
 import CommuteRow from "./CommuteRow";
 import StepRow from "./StepRow";
 import PlaceSearch from "./PlaceSearch";
@@ -13,6 +14,7 @@ export default function Timeline({ dayId }: { dayId: string }) {
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
   const reorderSteps = useTripStore((s) => s.reorderSteps);
   const addStep = useTripStore((s) => s.addStep);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -49,13 +51,15 @@ export default function Timeline({ dayId }: { dayId: string }) {
 
       {day.steps.length === 0 && (
         <p className="py-4 text-center text-sm text-stone-400">
-          No stops yet — search below to add the first one.
+          {isEditMode ? "No stops yet — search below to add the first one." : "No stops yet."}
         </p>
       )}
 
-      <div className="mt-3">
-        <PlaceSearch placeholder="Add a stop…" onSelect={(place) => addStep(day.id, place)} />
-      </div>
+      {isEditMode && (
+        <div className="mt-3">
+          <PlaceSearch placeholder="Add a stop…" onSelect={(place) => addStep(day.id, place)} />
+        </div>
+      )}
     </div>
   );
 }

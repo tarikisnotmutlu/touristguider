@@ -5,6 +5,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
+import { useJourneyStore } from "@/store/useJourneyStore";
 import type { Step } from "@/lib/types";
 import { CATEGORY_COLOR, CATEGORY_ICON } from "@/lib/categories";
 
@@ -21,6 +22,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
   const toggleStepCompleted = useTripStore((s) => s.toggleStepCompleted);
   const setActiveStepId = useTripStore((s) => s.setActiveStepId);
   const activeStepId = useTripStore((s) => s.activeStepId);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
 
   const dragStyle = {
     transform: CSS.Transform.toString(transform),
@@ -85,15 +87,17 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
             : "border-stone-200 bg-white/90"
         )}
       >
-        <button
-          {...attributes}
-          {...listeners}
-          className="mt-1 shrink-0 cursor-grab touch-none text-stone-300 active:cursor-grabbing"
-          aria-label="Drag to reorder"
-          type="button"
-        >
-          ⠿
-        </button>
+        {isEditMode && (
+          <button
+            {...attributes}
+            {...listeners}
+            className="mt-1 shrink-0 cursor-grab touch-none text-stone-300 active:cursor-grabbing"
+            aria-label="Drag to reorder"
+            type="button"
+          >
+            ⠿
+          </button>
+        )}
 
         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setActiveStepId(step.id)}>
           <p
@@ -114,32 +118,34 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <label className="flex items-center gap-1 text-[11px] text-stone-400">
-            <input
-              type="number"
-              min={5}
-              step={5}
-              value={step.durationMin}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) =>
-                updateStep(dayId, step.id, { durationMin: Math.max(5, Number(e.target.value) || 5) })
-              }
-              className="w-12 rounded border border-stone-200 px-1 py-0.5 text-right text-xs text-stone-900"
-            />
-            min
-          </label>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              removeStep(dayId, step.id);
-            }}
-            className="text-[11px] text-stone-400 hover:text-terracotta-600"
-            type="button"
-          >
-            remove
-          </button>
-        </div>
+        {isEditMode && (
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <label className="flex items-center gap-1 text-[11px] text-stone-400">
+              <input
+                type="number"
+                min={5}
+                step={5}
+                value={step.durationMin}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  updateStep(dayId, step.id, { durationMin: Math.max(5, Number(e.target.value) || 5) })
+                }
+                className="w-12 rounded border border-stone-200 px-1 py-0.5 text-right text-xs text-stone-900"
+              />
+              min
+            </label>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                removeStep(dayId, step.id);
+              }}
+              className="text-[11px] text-stone-400 hover:text-terracotta-600"
+              type="button"
+            >
+              remove
+            </button>
+          </div>
+        )}
       </motion.div>
     </>
   );

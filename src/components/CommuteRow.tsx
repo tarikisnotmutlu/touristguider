@@ -3,6 +3,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
+import { useJourneyStore } from "@/store/useJourneyStore";
 import { TRANSPORT_ICON, TRANSPORT_LABEL, TRANSPORT_MODES } from "@/lib/transport";
 
 /** Renders as 3 direct grid cells (time / line+icons / annotation) so it lines
@@ -12,6 +13,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
   const setSegmentMode = useTripStore((s) => s.setSegmentMode);
   const setTransitLine = useTripStore((s) => s.setTransitLine);
   const resetRouteToAuto = useTripStore((s) => s.resetRouteToAuto);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
   const [editingLine, setEditingLine] = useState(false);
   const [lineDraft, setLineDraft] = useState("");
 
@@ -33,28 +35,34 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
       </div>
       <div className="flex flex-col gap-1.5 py-1.5 text-xs text-stone-500">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <div className="flex gap-0.5">
-            {TRANSPORT_MODES.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                title={TRANSPORT_LABEL[mode]}
-                onClick={() => setSegmentMode(dayId, segIndex, mode)}
-                className={clsx(
-                  "rounded-full px-1.5 py-0.5 text-sm leading-none transition",
-                  mode === route!.mode
-                    ? "bg-sage-100 ring-1 ring-sage-400"
-                    : "opacity-40 hover:opacity-80"
-                )}
-              >
-                {TRANSPORT_ICON[mode]}
-              </button>
-            ))}
-          </div>
+          {isEditMode ? (
+            <div className="flex gap-0.5">
+              {TRANSPORT_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  title={TRANSPORT_LABEL[mode]}
+                  onClick={() => setSegmentMode(dayId, segIndex, mode)}
+                  className={clsx(
+                    "rounded-full px-1.5 py-0.5 text-sm leading-none transition",
+                    mode === route!.mode
+                      ? "bg-sage-100 ring-1 ring-sage-400"
+                      : "opacity-40 hover:opacity-80"
+                  )}
+                >
+                  {TRANSPORT_ICON[mode]}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="text-sm leading-none" title={TRANSPORT_LABEL[route.mode]}>
+              {TRANSPORT_ICON[route.mode]}
+            </span>
+          )}
           <span className="font-medium text-stone-600">
             {km} km · {min} min
           </span>
-          {route.isManual && (
+          {isEditMode && route.isManual && (
             <span className="flex items-center gap-1 rounded-full bg-terracotta-100 px-2 py-0.5 text-terracotta-700">
               ✏️ edited
               <button type="button" className="underline" onClick={() => resetRouteToAuto(dayId, segIndex)}>
@@ -64,9 +72,13 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
           )}
         </div>
 
-        {route.mode === "transit" && (
+        {route.mode === "transit" && (isEditMode || route.transitLine) && (
           <div>
-            {editingLine ? (
+            {!isEditMode ? (
+              <span className="rounded-full bg-stone-100 px-2.5 py-1 font-medium text-stone-700">
+                {route.transitLine}
+              </span>
+            ) : editingLine ? (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
