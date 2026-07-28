@@ -48,8 +48,8 @@ body {
 }
 
 .maplibregl-map {
-  width: 100% !important;
-  height: 100% !important;
+  width: 100vw !important;
+  height: 100vh !important;
 }
 .maplibregl-ctrl-attrib {
   font-size: 10px !important;

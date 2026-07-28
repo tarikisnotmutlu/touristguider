@@ -31,6 +31,7 @@ export function createBlankTrip(): Trip {
     title: `Trip — ${today.toLocaleDateString()}`,
     days: [day(1), day(2), day(3)],
     hiddenGems: [],
+    unplanned: [],
   };
 }
 
@@ -265,5 +266,15 @@ export function createDemoTrip(): Trip {
     friendName: "Alex",
     days: days.map(buildDay),
     hiddenGems: [],
+    unplanned: [
+      {
+        id: genId(),
+        name: "Basilica Cistern",
+        lat: 41.0084,
+        lng: 28.9779,
+        category: "attraction",
+        notes: "Add to a day once we know the weather.",
+      },
+    ],
   };
 }

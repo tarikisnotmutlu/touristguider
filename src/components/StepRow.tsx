@@ -1,18 +1,19 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import type { Step } from "@/lib/types";
-import { CATEGORY_COLOR, CATEGORY_ICON } from "@/lib/categories";
+import { CATEGORY_TAG } from "@/lib/categories";
+import { thumbnailUrl } from "@/lib/thumbnail";
 
 const SPRING = { type: "spring", bounce: 0.15, duration: 0.5 } as const;
 
-/** Renders as 3 direct grid cells (time / dot / card) so it lines up with
- *  CommuteRow's own 3 cells inside Timeline's shared CSS grid. */
+/** Renders as 2 direct grid cells (numbered node / card) so it lines up with
+ *  CommuteRow's own 2 cells inside Timeline's shared CSS grid. */
 export default function StepRow({ dayId, step, index }: { dayId: string; step: Step; index: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.id,
@@ -29,49 +30,23 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
     transition,
   };
   const doneCount = step.checklist.filter((c) => c.done).length;
+  const tag = CATEGORY_TAG[step.category];
 
   return (
     <>
-      <div className="pt-2 text-right">
-        <p className="font-mono text-xs uppercase tracking-wider text-stone-500">{step.arrival}</p>
-        <p className="font-mono text-[10px] uppercase tracking-wider text-stone-400">{step.departure}</p>
-      </div>
-
       <div className="flex justify-center pt-1.5">
         <button
           onClick={() => toggleStepCompleted(dayId, step.id)}
           type="button"
           title={step.completed ? "Mark as not done" : "Mark as done"}
-          className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-white text-sm shadow-[0_0_10px_rgba(111,138,97,0.45)]"
-          style={{ background: step.completed ? "var(--color-sage-500)" : CATEGORY_COLOR[step.category] }}
+          className={clsx(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-bold transition-colors",
+            step.completed
+              ? "border-white bg-sage-500 text-white shadow-[0_0_10px_rgba(111,138,97,0.45)]"
+              : "border-stone-300 bg-stone-100 text-stone-600"
+          )}
         >
-          <AnimatePresence mode="wait" initial={false}>
-            {step.completed ? (
-              <motion.span
-                key="check"
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                transition={SPRING}
-                className="text-white"
-              >
-                ✓
-              </motion.span>
-            ) : (
-              <motion.span
-                key="icon"
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                transition={SPRING}
-              >
-                {CATEGORY_ICON[step.category]}
-              </motion.span>
-            )}
-          </AnimatePresence>
-          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-stone-800 text-[9px] font-bold text-white">
-            {index + 1}
-          </span>
+          {step.completed ? "✓" : index + 1}
         </button>
       </div>
 
@@ -81,17 +56,15 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.6 : 1 }}
         transition={SPRING}
         className={clsx(
-          "mb-2 flex items-start gap-2 rounded-2xl border p-5 backdrop-blur-xl transition-colors shadow-[0_4px_20px_rgba(0,0,0,0.03)]",
-          step.id === activeStepId
-            ? "border-sage-300 bg-sage-50/90"
-            : "border-stone-200/80 bg-white/85"
+          "mb-2 flex items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm transition-colors",
+          step.id === activeStepId ? "border-sage-300 bg-sage-50" : "border-stone-200"
         )}
       >
         {isEditMode && (
           <button
             {...attributes}
             {...listeners}
-            className="mt-1 shrink-0 cursor-grab touch-none text-stone-300 active:cursor-grabbing"
+            className="shrink-0 cursor-grab touch-none text-stone-300 active:cursor-grabbing"
             aria-label="Drag to reorder"
             type="button"
           >
@@ -99,23 +72,35 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </button>
         )}
 
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={thumbnailUrl(step.id, 128)}
+          alt=""
+          className="h-16 w-16 shrink-0 rounded-lg object-cover"
+        />
+
         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setActiveStepId(step.id)}>
           <p
             className={clsx(
-              "truncate text-sm font-semibold tracking-tight text-stone-800 transition-all",
+              "truncate text-sm font-bold tracking-tight text-stone-800 transition-all",
               step.completed && "text-stone-400 line-through decoration-stone-300"
             )}
           >
             {step.name}
           </p>
-          <p className="text-xs text-stone-400">
-            {step.arrival} → {step.departure}
-            {step.checklist.length > 0 && (
-              <span className="ml-2">
-                ✅ {doneCount}/{step.checklist.length}
-              </span>
+          <span
+            className={clsx(
+              "mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium",
+              tag.className
             )}
-          </p>
+          >
+            {tag.text}
+          </span>
+          {step.checklist.length > 0 && (
+            <p className="mt-1 text-[11px] text-stone-400">
+              ✅ {doneCount}/{step.checklist.length}
+            </p>
+          )}
         </div>
 
         {isEditMode && (

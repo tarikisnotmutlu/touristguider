@@ -36,5 +36,6 @@ export function normalizeTrip(trip: Trip): Trip {
     ...trip,
     days: (trip.days ?? []).map(normalizeDay),
     hiddenGems: trip.hiddenGems ?? [],
+    unplanned: trip.unplanned ?? [],
   };
 }

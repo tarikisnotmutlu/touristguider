@@ -19,7 +19,7 @@ import { ROUTABLE_MODES, type LatLng } from "@/lib/types";
 import { pointBefore } from "@/lib/dayHelpers";
 import { fetchRoute } from "@/lib/osrmHttp";
 import { boundsOf, estimateDurationMin, haversineMeters, projectPointOntoPolyline } from "@/lib/geo";
-import { TRANSPORT_COLOR } from "@/lib/transport";
+import { dayColor } from "@/lib/dayColors";
 import {
   StartMarker,
   StepMarker,
@@ -253,7 +253,7 @@ export default function MapView() {
           const srcId = lineSourceId(day.id, i);
           const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
           const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i });
-          const color = TRANSPORT_COLOR[route.mode];
+          const color = dayColor(activeDayIndex);
           const routable = ROUTABLE_MODES.includes(route.mode);
 
           return (
@@ -378,6 +378,17 @@ export default function MapView() {
             setPendingGemPoint(null);
           }}
         />
+      )}
+
+      {/* Tile load can take a beat on a cold connection — without this, that
+          window reads as "the map is broken" instead of "it's loading". */}
+      {!ready && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-stone-100">
+          <div className="flex flex-col items-center gap-2 text-stone-400">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-500" />
+            <p className="text-xs font-medium">Loading map…</p>
+          </div>
+        </div>
       )}
     </div>
   );

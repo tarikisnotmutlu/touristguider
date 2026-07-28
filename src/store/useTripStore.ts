@@ -107,6 +107,16 @@ interface TripState {
 
   addHiddenGem: (point: LatLng, note: string) => void;
   removeHiddenGem: (id: string) => void;
+
+  setTripDates: (startDate: string, endDate: string) => void;
+  addUnplannedPlace: (place: {
+    name: string;
+    lat: number;
+    lng: number;
+    category?: PlaceCategory;
+  }) => void;
+  removeUnplannedPlace: (id: string) => void;
+  moveUnplannedToDay: (id: string, dayId: string) => void;
 }
 
 function findDay(trip: Trip, dayId: string) {
@@ -124,7 +134,7 @@ function recordHistory(state: { trip: Trip; past: Trip[]; future: Trip[] }) {
 
 export const useTripStore = create<TripState>()(
   immer((set) => ({
-    trip: { id: genId(), title: "New Trip", days: [], hiddenGems: [] },
+    trip: { id: genId(), title: "New Trip", days: [], hiddenGems: [], unplanned: [] },
     activeDayIndex: 0,
     activeStepId: null,
     activeGemId: null,
@@ -395,6 +405,56 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         recordHistory(state);
         state.trip.hiddenGems = state.trip.hiddenGems.filter((g) => g.id !== id);
+      }),
+
+    setTripDates: (startDate, endDate) =>
+      set((state) => {
+        recordHistory(state);
+        state.trip.startDate = startDate || undefined;
+        state.trip.endDate = endDate || undefined;
+      }),
+
+    addUnplannedPlace: (place) =>
+      set((state) => {
+        recordHistory(state);
+        state.trip.unplanned.push({
+          id: genId(),
+          name: place.name,
+          lat: place.lat,
+          lng: place.lng,
+          category: place.category ?? "other",
+          notes: "",
+        });
+      }),
+
+    removeUnplannedPlace: (id) =>
+      set((state) => {
+        recordHistory(state);
+        state.trip.unplanned = state.trip.unplanned.filter((p) => p.id !== id);
+      }),
+
+    moveUnplannedToDay: (id, dayId) =>
+      set((state) => {
+        const place = state.trip.unplanned.find((p) => p.id === id);
+        const { day } = findDay(state.trip, dayId);
+        if (!place || !day) return;
+        recordHistory(state);
+        const from = day.steps.length > 0 ? day.steps[day.steps.length - 1] : day.startPoint;
+        const step: Step = {
+          id: genId(),
+          name: place.name,
+          lat: place.lat,
+          lng: place.lng,
+          category: place.category,
+          durationMin: 60,
+          notes: place.notes,
+          checklist: [],
+          completed: false,
+        };
+        day.steps.push(step);
+        day.routes.push(makeRoute(from, place, "walk"));
+        recalcDay(day);
+        state.trip.unplanned = state.trip.unplanned.filter((p) => p.id !== id);
       }),
   }))
 );

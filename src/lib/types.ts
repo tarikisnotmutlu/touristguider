@@ -71,10 +71,25 @@ export interface HiddenGem {
   createdAt: number;
 }
 
+/** A saved place with no day/time slot yet — lives in the "Unplanned" tab
+ *  until dragged/assigned onto a specific day. */
+export interface UnplannedPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: PlaceCategory;
+  notes: string;
+}
+
 export interface Trip {
   id: string;
   title: string;
   friendName?: string;
+  /** ISO date strings ("YYYY-MM-DD"), optional — set via the "Choose dates" pill. */
+  startDate?: string;
+  endDate?: string;
   days: Day[];
   hiddenGems: HiddenGem[];
+  unplanned: UnplannedPlace[];
 }

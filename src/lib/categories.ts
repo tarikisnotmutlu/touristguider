@@ -61,6 +61,24 @@ export const CATEGORY_COLOR: Record<PlaceCategory, string> = {
   other: "#4f46e5",
 };
 
+/** Pastel pill styling for the compact card's category tag — emoji + label
+ *  baked in together since the tag always reads as one unit (e.g. "✨ Attractions"). */
+export const CATEGORY_TAG: Record<PlaceCategory, { text: string; className: string }> = {
+  mosque: { text: "🕌 Landmarks", className: "bg-indigo-100 text-indigo-700" },
+  church: { text: "⛪ Landmarks", className: "bg-indigo-100 text-indigo-700" },
+  museum: { text: "🏛️ Museums", className: "bg-purple-100 text-purple-700" },
+  restaurant: { text: "🍽️ Food", className: "bg-orange-100 text-orange-700" },
+  cafe: { text: "☕ Cafes", className: "bg-amber-100 text-amber-700" },
+  bar: { text: "🍸 Nightlife", className: "bg-fuchsia-100 text-fuchsia-700" },
+  hotel: { text: "🏨 Stay", className: "bg-blue-100 text-blue-700" },
+  shop: { text: "🛍️ Shopping", className: "bg-rose-100 text-rose-700" },
+  park: { text: "🌳 Outdoors", className: "bg-green-100 text-green-700" },
+  viewpoint: { text: "👁️ Viewpoints", className: "bg-cyan-100 text-cyan-700" },
+  beach: { text: "🏖️ Beach", className: "bg-yellow-100 text-yellow-700" },
+  attraction: { text: "✨ Attractions", className: "bg-pink-100 text-pink-700" },
+  other: { text: "📍 Place", className: "bg-stone-100 text-stone-600" },
+};
+
 export const ALL_CATEGORIES: PlaceCategory[] = [
   "mosque",
   "church",

@@ -20,10 +20,20 @@ const TICK_MS = 2000;
 export default function JourneyEngine() {
   const dayStarted = useJourneyStore((s) => s.dayStarted);
 
-  // --- 0. rehydrate persisted fatigue/hunger/thirst/cats/dayStarted from
-  //     localStorage once we're on the client (skipped during SSR) ---
+  // --- 0. rehydrate persisted fatigue/hunger/thirst/cats/dayStarted/tab from
+  //     localStorage once we're on the client (skipped during SSR), then sync
+  //     the restored tab's day index into useTripStore (the source of truth
+  //     for "which day" — this store only remembers what to restore it to) ---
   useEffect(() => {
-    useJourneyStore.persist.rehydrate();
+    const result = useJourneyStore.persist.rehydrate();
+    Promise.resolve(result).then(() => {
+      const journey = useJourneyStore.getState();
+      if (journey.panelView !== "day") return;
+      const dayCount = useTripStore.getState().trip.days.length;
+      if (dayCount === 0) return;
+      const clamped = Math.min(Math.max(journey.savedDayIndex, 0), dayCount - 1);
+      useTripStore.getState().setActiveDayIndex(clamped);
+    });
   }, []);
 
   // --- 1. decay/recovery ticking ---

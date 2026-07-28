@@ -40,9 +40,20 @@ export interface ArrivalInfo {
   stepName: string;
 }
 
+export type PanelView = "overview" | "unplanned" | "day";
+
 interface JourneyState {
   isEditMode: boolean;
   toggleEditMode: () => void;
+
+  /** Which pill tab is showing in the panel, persisted so a refresh mid-trip
+   *  doesn't dump the friend back to a random tab. When panelView is "day",
+   *  `savedDayIndex` says which one — useTripStore.activeDayIndex is the
+   *  live source of truth, this is just what gets restored on reload. */
+  panelView: PanelView;
+  savedDayIndex: number;
+  setPanelView: (view: PanelView) => void;
+  setSavedDayIndex: (index: number) => void;
 
   dayStarted: boolean;
   liveLocation: LatLng | null;
@@ -75,13 +86,18 @@ interface JourneyState {
   clearArrival: () => void;
 }
 
-const CAT_MILESTONES = [1, 5, 10, 25, 50];
+export const CAT_MILESTONES = [1, 5, 10, 25, 50];
 
 export const useJourneyStore = create<JourneyState>()(
   persist(
     (set, get) => ({
       isEditMode: false,
       toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode })),
+
+      panelView: "day",
+      savedDayIndex: 0,
+      setPanelView: (view) => set({ panelView: view }),
+      setSavedDayIndex: (index) => set({ savedDayIndex: index }),
 
       dayStarted: false,
       liveLocation: null,
@@ -155,6 +171,8 @@ export const useJourneyStore = create<JourneyState>()(
         restingStepId: s.restingStepId,
         catsPetted: s.catsPetted,
         celebratedStepIds: s.celebratedStepIds,
+        panelView: s.panelView,
+        savedDayIndex: s.savedDayIndex,
       }),
     }
   )

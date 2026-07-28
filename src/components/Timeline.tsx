@@ -34,9 +34,9 @@ export default function Timeline({ dayId }: { dayId: string }) {
 
   return (
     <div className="px-3 pb-4">
-      {/* A shared 3-column grid (time / line+dot / card) so CommuteRow and
-          StepRow — each emitting exactly 3 grid cells — line up automatically. */}
-      <div className="grid grid-cols-[42px_28px_1fr] gap-x-1.5">
+      {/* A shared 2-column grid (numbered node+line / card) so CommuteRow and
+          StepRow — each emitting exactly 2 grid cells — line up automatically. */}
+      <div className="grid grid-cols-[32px_1fr] gap-x-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={day.steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             {day.steps.map((step, i) => (
