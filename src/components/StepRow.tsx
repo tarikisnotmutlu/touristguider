@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
 import type { Step } from "@/lib/types";
+import { CATEGORY_COLOR, CATEGORY_ICON } from "@/lib/categories";
 
 export default function StepRow({ dayId, step, index }: { dayId: string; step: Step; index: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -42,11 +43,16 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
       </button>
 
       <button
-        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white"
+        className="relative mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-white text-sm shadow"
+        style={{ background: CATEGORY_COLOR[step.category] }}
         onClick={() => setActiveStepId(step.id)}
         type="button"
+        title={CATEGORY_ICON[step.category]}
       >
-        {index + 1}
+        {CATEGORY_ICON[step.category]}
+        <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-slate-900 text-[9px] font-bold text-white">
+          {index + 1}
+        </span>
       </button>
 
       <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setActiveStepId(step.id)}>

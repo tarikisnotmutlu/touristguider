@@ -1,17 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CATEGORY_ICON, inferCategoryFromNominatim, type PlaceCategory } from "@/lib/categories";
 
 interface NominatimResult {
   place_id: number;
   display_name: string;
   lat: string;
   lon: string;
+  class?: string;
+  type?: string;
 }
 
 interface PlaceSearchProps {
   placeholder?: string;
-  onSelect: (place: { name: string; lat: number; lng: number }) => void;
+  onSelect: (place: {
+    name: string;
+    lat: number;
+    lng: number;
+    category?: PlaceCategory;
+  }) => void;
 }
 
 /**
@@ -69,26 +77,31 @@ export default function PlaceSearch({ placeholder = "Search a place…", onSelec
       {loading && <span className="absolute right-3 top-2.5 text-xs text-slate-400">…</span>}
       {open && visibleResults.length > 0 && (
         <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-          {visibleResults.map((r) => (
-            <li key={r.place_id}>
-              <button
-                type="button"
-                className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-indigo-50"
-                onClick={() => {
-                  onSelect({
-                    name: r.display_name.split(",")[0],
-                    lat: parseFloat(r.lat),
-                    lng: parseFloat(r.lon),
-                  });
-                  setQuery("");
-                  setResults([]);
-                  setOpen(false);
-                }}
-              >
-                {r.display_name}
-              </button>
-            </li>
-          ))}
+          {visibleResults.map((r) => {
+            const category = inferCategoryFromNominatim(r.class, r.type);
+            return (
+              <li key={r.place_id}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 truncate px-3 py-2 text-left text-sm hover:bg-indigo-50"
+                  onClick={() => {
+                    onSelect({
+                      name: r.display_name.split(",")[0],
+                      lat: parseFloat(r.lat),
+                      lng: parseFloat(r.lon),
+                      category,
+                    });
+                    setQuery("");
+                    setResults([]);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="shrink-0">{CATEGORY_ICON[category]}</span>
+                  <span className="truncate">{r.display_name}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

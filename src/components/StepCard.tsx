@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
+import { ALL_CATEGORIES, CATEGORY_ICON, CATEGORY_LABEL } from "@/lib/categories";
 import Modal from "./Modal";
 
 export default function StepCard() {
@@ -36,6 +38,29 @@ export default function StepCard() {
             >
               ✕
             </button>
+          </div>
+
+          <div>
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Category</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {ALL_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  title={CATEGORY_LABEL[cat]}
+                  onClick={() => updateStep(found!.dayId, found!.step.id, { category: cat })}
+                  className={clsx(
+                    "flex items-center gap-1 rounded-full border px-2 py-1 text-sm",
+                    found.step.category === cat
+                      ? "border-indigo-400 bg-indigo-50"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  )}
+                >
+                  <span>{CATEGORY_ICON[cat]}</span>
+                  <span className="text-xs text-slate-600">{CATEGORY_LABEL[cat]}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>

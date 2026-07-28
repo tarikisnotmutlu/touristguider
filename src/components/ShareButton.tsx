@@ -1,15 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useTripStore } from "@/store/useTripStore";
-import { buildShareUrl } from "@/lib/share";
 
 export default function ShareButton() {
-  const trip = useTripStore((s) => s.trip);
   const [copied, setCopied] = useState(false);
 
   async function handleShare() {
-    const url = buildShareUrl(trip);
+    const url = window.location.href;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);

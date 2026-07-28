@@ -65,7 +65,7 @@ export default function PanicButton() {
           setStatus("");
         }}
         type="button"
-        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-red-600 text-2xl text-white shadow-lg active:scale-95 md:bottom-6"
+        className="fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-red-600 text-2xl text-white shadow-lg active:scale-95 md:bottom-6"
         aria-label="Panic button"
       >
         🆘

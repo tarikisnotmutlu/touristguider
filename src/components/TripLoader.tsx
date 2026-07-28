@@ -1,28 +1,69 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTripStore } from "@/store/useTripStore";
-import { readTripFromLocation } from "@/lib/share";
+import { fetchTrip, saveTrip } from "@/lib/tripApi";
 import { createDemoTrip } from "@/lib/seed";
+import { rememberTrip } from "@/lib/localTrips";
 import AppShell from "./AppShell";
 
-/** Hydrates the store from a shared `?data=` link if present, else seeds a demo trip. */
-export default function TripLoader() {
-  const [ready, setReady] = useState(false);
+const AUTOSAVE_DELAY_MS = 1200;
+
+/**
+ * Hydrates the store from the server (Vercel Blob, keyed by `tripId`) and keeps it
+ * saved back there on every change — the URL is the single source of truth, so
+ * refreshing or sharing the link always shows the same, current itinerary.
+ */
+export default function TripLoader({ tripId }: { tripId: string }) {
+  // Tracks which trip id the store is currently hydrated for, rather than a
+  // separate "loading" boolean — `ready` is derived from comparing the two.
+  const [readyForTripId, setReadyForTripId] = useState<string | null>(null);
   const setTrip = useTripStore((s) => s.setTrip);
+  const setSaveState = useTripStore((s) => s.setSaveState);
+  const trip = useTripStore((s) => s.trip);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
-    const shared = readTripFromLocation();
-    setTrip(shared ?? createDemoTrip());
-    // window.location is only readable client-side, so this one-time hydration
-    // gate can't be computed during the (SSR-matching) first render — it has to
-    // flip after mount.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setReady(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+    hydratedRef.current = false;
 
-  if (!ready) {
+    (async () => {
+      const existing = await fetchTrip(tripId);
+      if (cancelled) return;
+      if (existing) {
+        setTrip(existing);
+      } else {
+        const fresh = createDemoTrip();
+        fresh.id = tripId;
+        setTrip(fresh);
+        await saveTrip(fresh);
+      }
+      if (cancelled) return;
+      hydratedRef.current = true;
+      setReadyForTripId(tripId);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tripId, setTrip]);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    rememberTrip(trip.id, trip.title);
+    setSaveState("saving");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      const ok = await saveTrip(trip);
+      setSaveState(ok ? "saved" : "idle");
+    }, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [trip, setSaveState]);
+
+  if (readyForTripId !== tripId) {
     return (
       <div className="flex h-dvh w-full items-center justify-center bg-slate-100 text-slate-500">
         Loading itinerary…

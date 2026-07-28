@@ -20,6 +20,10 @@ export default function MobileSheet() {
       snapPoints={SNAP_POINTS}
       activeSnapPoint={snap}
       setActiveSnapPoint={setSnap}
+      // Only the handle bar drags the sheet — the content area has its own
+      // touch-driven interactions (drag-to-reorder stops, scrolling) that would
+      // otherwise fight with vaul's whole-panel drag detection.
+      handleOnly
     >
       <Drawer.Portal>
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-40 flex h-[92vh] flex-col rounded-t-2xl bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.15)] outline-none md:hidden">

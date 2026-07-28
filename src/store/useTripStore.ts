@@ -1,10 +1,13 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { Day, LatLng, RouteSegment, Step, TransportMode, Trip } from "@/lib/types";
+import type { PlaceCategory } from "@/lib/categories";
 import { estimateDurationMin, haversineMeters } from "@/lib/geo";
 import { recomputeDayTimes } from "@/lib/time";
 import { genId } from "@/lib/id";
 import { pointBefore } from "@/lib/dayHelpers";
+
+const HISTORY_LIMIT = 50;
 
 function makeRoute(from: LatLng, to: LatLng, mode: TransportMode): RouteSegment {
   const distanceM = haversineMeters(from, to);
@@ -35,25 +38,41 @@ function recalcDay(day: Day) {
   day.steps = recomputeDayTimes(day);
 }
 
+function snapshotTrip(trip: Trip): Trip {
+  return JSON.parse(JSON.stringify(trip));
+}
+
+export type SaveState = "idle" | "saving" | "saved";
+
 interface TripState {
   trip: Trip;
   activeDayIndex: number;
   activeStepId: string | null;
+  saveState: SaveState;
+  past: Trip[];
+  future: Trip[];
 
   setTrip: (trip: Trip) => void;
   setActiveDayIndex: (index: number) => void;
   setActiveStepId: (id: string | null) => void;
+  setSaveState: (state: SaveState) => void;
+
+  undo: () => void;
+  redo: () => void;
 
   setDayStartTime: (dayId: string, value: string) => void;
   setDayStartPoint: (dayId: string, point: { name: string; lat: number; lng: number }) => void;
 
-  addStep: (dayId: string, place: { name: string; lat: number; lng: number }) => void;
+  addStep: (
+    dayId: string,
+    place: { name: string; lat: number; lng: number; category?: PlaceCategory }
+  ) => void;
   removeStep: (dayId: string, stepId: string) => void;
   reorderSteps: (dayId: string, fromIndex: number, toIndex: number) => void;
   updateStep: (
     dayId: string,
     stepId: string,
-    patch: Partial<Pick<Step, "name" | "notes" | "durationMin">>
+    patch: Partial<Pick<Step, "name" | "notes" | "durationMin" | "category">>
   ) => void;
 
   toggleChecklistItem: (dayId: string, stepId: string, itemId: string) => void;
@@ -66,7 +85,19 @@ interface TripState {
     segIndex: number,
     info: { distanceM: number; durationMin: number; geometry: LatLng[] }
   ) => void;
-  setManualEdit: (dayId: string, segIndex: number, waypoints: LatLng[]) => void;
+  insertManualWaypoint: (
+    dayId: string,
+    segIndex: number,
+    insertAt: number,
+    point: LatLng
+  ) => void;
+  updateManualWaypoint: (
+    dayId: string,
+    segIndex: number,
+    waypointIndex: number,
+    point: LatLng
+  ) => void;
+  removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
   resetRouteToAuto: (dayId: string, segIndex: number) => void;
 }
 
@@ -80,12 +111,22 @@ export const useTripStore = create<TripState>()(
     trip: { id: genId(), title: "New Trip", days: [] },
     activeDayIndex: 0,
     activeStepId: null,
+    saveState: "idle",
+    past: [],
+    future: [],
 
     setTrip: (trip) =>
       set((state) => {
         state.trip = trip;
         state.activeDayIndex = 0;
         state.activeStepId = null;
+        state.past = [];
+        state.future = [];
+      }),
+
+    setSaveState: (saveState) =>
+      set((state) => {
+        state.saveState = saveState;
       }),
 
     setActiveDayIndex: (index) =>
@@ -99,10 +140,35 @@ export const useTripStore = create<TripState>()(
         state.activeStepId = id;
       }),
 
+    undo: () =>
+      set((state) => {
+        const previous = state.past.pop();
+        if (!previous) return;
+        state.future.unshift(snapshotTrip(state.trip));
+        if (state.future.length > HISTORY_LIMIT) state.future.pop();
+        state.trip = previous;
+        state.activeDayIndex = Math.min(state.activeDayIndex, Math.max(0, state.trip.days.length - 1));
+        state.activeStepId = null;
+      }),
+
+    redo: () =>
+      set((state) => {
+        const next = state.future.shift();
+        if (!next) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.trip = next;
+        state.activeDayIndex = Math.min(state.activeDayIndex, Math.max(0, state.trip.days.length - 1));
+        state.activeStepId = null;
+      }),
+
     setDayStartTime: (dayId, value) =>
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         day.startTime = value;
         recalcDay(day);
       }),
@@ -111,6 +177,9 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         day.startPoint = point;
         day.routes = rebuildRoutes(day);
         recalcDay(day);
@@ -120,12 +189,16 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         const from = day.steps.length > 0 ? day.steps[day.steps.length - 1] : day.startPoint;
         const step: Step = {
           id: genId(),
           name: place.name,
           lat: place.lat,
           lng: place.lng,
+          category: place.category ?? "other",
           durationMin: 60,
           notes: "",
           checklist: [],
@@ -139,6 +212,9 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         if (!day) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         day.steps = day.steps.filter((s) => s.id !== stepId);
         day.routes = rebuildRoutes(day);
         recalcDay(day);
@@ -156,6 +232,9 @@ export const useTripStore = create<TripState>()(
           toIndex >= steps.length
         )
           return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         const [moved] = steps.splice(fromIndex, 1);
         steps.splice(toIndex, 0, moved);
         day.routes = rebuildRoutes(day);
@@ -168,6 +247,9 @@ export const useTripStore = create<TripState>()(
         if (!day) return;
         const step = day.steps.find((s) => s.id === stepId);
         if (!step) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         Object.assign(step, patch);
         recalcDay(day);
       }),
@@ -177,7 +259,11 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
         const item = step?.checklist.find((c) => c.id === itemId);
-        if (item) item.done = !item.done;
+        if (!item) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
+        item.done = !item.done;
       }),
 
     addChecklistItem: (dayId, stepId, label) =>
@@ -185,6 +271,9 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
         if (!step || !label.trim()) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         step.checklist.push({ id: genId(), label: label.trim(), done: false });
       }),
 
@@ -193,6 +282,9 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
         if (!step) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         step.checklist = step.checklist.filter((c) => c.id !== itemId);
       }),
 
@@ -201,6 +293,9 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!day || !route) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         const from = pointBefore(day, segIndex);
         const to = day.steps[segIndex];
         const fresh = makeRoute(from, to, mode);
@@ -220,13 +315,39 @@ export const useTripStore = create<TripState>()(
         recalcDay(day);
       }),
 
-    setManualEdit: (dayId, segIndex, waypoints) =>
+    insertManualWaypoint: (dayId, segIndex, insertAt, point) =>
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!route) return;
-        route.manualWaypoints = waypoints;
-        route.isManual = waypoints.length > 0;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
+        route.manualWaypoints.splice(insertAt, 0, point);
+        route.isManual = true;
+      }),
+
+    updateManualWaypoint: (dayId, segIndex, waypointIndex, point) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!route || !route.manualWaypoints[waypointIndex]) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
+        route.manualWaypoints[waypointIndex] = point;
+      }),
+
+    removeManualWaypoint: (dayId, segIndex, waypointIndex) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!route) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
+        route.manualWaypoints.splice(waypointIndex, 1);
+        route.isManual = route.manualWaypoints.length > 0;
       }),
 
     resetRouteToAuto: (dayId, segIndex) =>
@@ -234,6 +355,9 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const route = day?.routes[segIndex];
         if (!day || !route) return;
+        state.past.push(snapshotTrip(state.trip));
+        if (state.past.length > HISTORY_LIMIT) state.past.shift();
+        state.future = [];
         const from = pointBefore(day, segIndex);
         const to = day.steps[segIndex];
         const fresh = makeRoute(from, to, route.mode);

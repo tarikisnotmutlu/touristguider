@@ -6,7 +6,7 @@ import MobileSheet from "./MobileSheet";
 import StepCard from "./StepCard";
 import PanicButton from "./PanicButton";
 
-// react-leaflet needs `window`, so the whole map tree is client-only and loaded
+// maplibre-gl needs `window`, so the whole map tree is client-only and loaded
 // without SSR.
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 

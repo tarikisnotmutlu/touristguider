@@ -1,3 +1,5 @@
+import type { PlaceCategory } from "./categories";
+
 export type TransportMode = "walk" | "drive" | "metro" | "bus" | "ferry" | "cycle";
 
 /** Modes we can actually route via OSRM road/path networks. */
@@ -19,6 +21,7 @@ export interface Step {
   name: string;
   lat: number;
   lng: number;
+  category: PlaceCategory;
   /** Minutes the visitor plans to spend at this stop. */
   durationMin: number;
   notes: string;

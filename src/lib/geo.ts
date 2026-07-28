@@ -29,6 +29,65 @@ export function estimateDurationMin(distanceM: number, mode: TransportMode): num
   return Math.max(1, Math.round(hours * 60));
 }
 
+/**
+ * Projects `point` onto the piecewise-linear `line`, treating lat/lng as locally
+ * flat (fine at city scale). Returns how far along the line (0..1) the closest
+ * point falls, and the perpendicular distance to it — used to (a) decide whether
+ * a drag started close enough to a route to count as "grabbing" it, and (b) pick
+ * where a newly-dropped via point belongs among the other via points in order.
+ */
+export function projectPointOntoPolyline(
+  line: LatLng[],
+  point: LatLng
+): { fraction: number; distanceM: number } {
+  if (line.length < 2) return { fraction: 0, distanceM: Infinity };
+
+  // Local equirectangular projection around the line's first point keeps this a
+  // plain 2D segment-projection problem instead of doing this in lat/lng directly.
+  const originLat = line[0].lat;
+  const cosLat = Math.cos((originLat * Math.PI) / 180);
+  const toXY = (p: LatLng) => ({
+    x: (p.lng - line[0].lng) * cosLat,
+    y: p.lat - line[0].lat,
+  });
+
+  const pts = line.map(toXY);
+  const target = toXY(point);
+
+  let cumulative = 0;
+  const cumAtVertex: number[] = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cumulative += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    cumAtVertex.push(cumulative);
+  }
+  const total = cumulative || 1;
+
+  let bestDistSq = Infinity;
+  let bestAlong = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const segLenSq = abx * abx + aby * aby || 1e-12;
+    let t = ((target.x - a.x) * abx + (target.y - a.y) * aby) / segLenSq;
+    t = Math.max(0, Math.min(1, t));
+    const projX = a.x + t * abx;
+    const projY = a.y + t * aby;
+    const distSq = (target.x - projX) ** 2 + (target.y - projY) ** 2;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      const segLen = Math.sqrt(segLenSq);
+      bestAlong = cumAtVertex[i] + t * segLen;
+    }
+  }
+
+  // Convert the local-degree distance back to meters via a rough haversine scale
+  // (good enough for the few-meter tolerances this is used for).
+  const distanceM = Math.sqrt(bestDistSq) * 111320;
+  return { fraction: bestAlong / total, distanceM };
+}
+
 export function boundsOf(points: LatLng[]): [[number, number], [number, number]] | null {
   if (points.length === 0) return null;
   let minLat = Infinity;

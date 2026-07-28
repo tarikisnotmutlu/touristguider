@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
-@import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
 
 :root {
   --background: #ffffff;
@@ -34,30 +32,54 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* leaflet-routing-machine ships its own itinerary panel + default styling; we drive
-   the whole UI ourselves, so the widget's chrome is fully suppressed here. */
-.leaflet-routing-container,
-.leaflet-routing-alt {
-  display: none !important;
-}
-
-.leaflet-control-attribution {
+.maplibregl-ctrl-attrib {
   font-size: 10px !important;
 }
 
-/* Our own numbered step markers (see MapView.tsx divIcon HTML). */
-.tg-step-marker {
+/* Our own category step markers (see domMarkers.ts). */
+.tg-marker {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 9999px;
-  color: white;
-  font-weight: 700;
-  font-size: 13px;
   border: 2px solid white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.tg-marker-active {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+
+.tg-marker-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tg-marker-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  background: #111827;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  border: 1.5px solid white;
 }
 
 .tg-start-marker {
@@ -82,4 +104,15 @@ body {
   background: white;
   border: 3px solid #111827;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+}
+
+/* Ghost preview marker shown while dragging a new via point onto the route. */
+.tg-ghost-marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #fbbf24;
+  border: 3px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }

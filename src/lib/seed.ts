@@ -1,4 +1,5 @@
 import type { Day, RouteSegment, Step, TransportMode, Trip } from "./types";
+import type { PlaceCategory } from "./categories";
 import { estimateDurationMin, haversineMeters } from "./geo";
 import { recomputeDayTimes } from "./time";
 import { genId } from "./id";
@@ -9,8 +10,27 @@ interface SeedStop {
   lng: number;
   durationMin: number;
   mode: TransportMode;
+  category: PlaceCategory;
   checklist?: string[];
   notes?: string;
+}
+
+/** A fresh, empty trip — used when there's nothing saved yet for a given link. */
+export function createBlankTrip(): Trip {
+  const today = new Date();
+  const day = (n: number) => ({
+    id: genId(),
+    label: `Day ${n}`,
+    startTime: "09:00",
+    startPoint: { name: "Meeting point", lat: 41.0082, lng: 28.9784 },
+    steps: [],
+    routes: [],
+  });
+  return {
+    id: genId(),
+    title: `Trip — ${today.toLocaleDateString()}`,
+    days: [day(1), day(2), day(3)],
+  };
 }
 
 interface SeedDay {
@@ -39,6 +59,7 @@ function buildDay(seed: SeedDay): Day {
     name: s.name,
     lat: s.lat,
     lng: s.lng,
+    category: s.category,
     durationMin: s.durationMin,
     notes: s.notes ?? "",
     checklist: (s.checklist ?? []).map((label) => ({ id: genId(), label, done: false })),
@@ -74,6 +95,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9802,
           durationMin: 75,
           mode: "walk",
+          category: "attraction",
           checklist: ["Marvel at the dome", "Spot the Viking runes", "Grab a coffee outside"],
         },
         {
@@ -82,6 +104,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9768,
           durationMin: 45,
           mode: "walk",
+          category: "mosque",
           checklist: ["Cover shoulders/knees", "Look up at the six minarets"],
         },
         {
@@ -90,6 +113,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9833,
           durationMin: 90,
           mode: "walk",
+          category: "museum",
           checklist: ["See the Imperial Treasury", "Harem tour (extra ticket)"],
         },
         {
@@ -98,6 +122,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9681,
           durationMin: 60,
           mode: "walk",
+          category: "shop",
           checklist: ["Haggle for a lamp", "Try Turkish delight samples"],
           notes: "Bring cash, card fees are steep here.",
         },
@@ -114,6 +139,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9779,
           durationMin: 60,
           mode: "walk",
+          category: "attraction",
           checklist: ["Ride the nostalgic tram"],
         },
         {
@@ -122,6 +148,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9741,
           durationMin: 50,
           mode: "walk",
+          category: "viewpoint",
           checklist: ["Sunset view from the top"],
         },
         {
@@ -130,6 +157,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9754,
           durationMin: 10,
           mode: "walk",
+          category: "attraction",
         },
         {
           name: "Kadıköy (Asian side)",
@@ -137,6 +165,7 @@ export function createDemoTrip(): Trip {
           lng: 29.0281,
           durationMin: 120,
           mode: "ferry",
+          category: "attraction",
           checklist: ["Wander the Tuesday/Friday market", "Try a fish sandwich"],
           notes: "Ferries run roughly every 20-30 min from Karaköy.",
         },
@@ -153,6 +182,7 @@ export function createDemoTrip(): Trip {
           lng: 29.011,
           durationMin: 40,
           mode: "ferry",
+          category: "attraction",
           checklist: ["Photo of the Maiden's Tower"],
         },
         {
@@ -161,6 +191,7 @@ export function createDemoTrip(): Trip {
           lng: 29.07,
           durationMin: 70,
           mode: "drive",
+          category: "viewpoint",
           checklist: ["Panoramic Bosphorus view", "Turkish tea at the tea garden"],
         },
         {
@@ -169,6 +200,7 @@ export function createDemoTrip(): Trip {
           lng: 29.0431,
           durationMin: 60,
           mode: "drive",
+          category: "museum",
         },
         {
           name: "Ortaköy",
@@ -176,6 +208,7 @@ export function createDemoTrip(): Trip {
           lng: 29.0272,
           durationMin: 60,
           mode: "bus",
+          category: "cafe",
           checklist: ["Kumpir (loaded baked potato)", "Photo with the Bosphorus Bridge"],
         },
       ],
@@ -191,6 +224,7 @@ export function createDemoTrip(): Trip {
           lng: 28.9829,
           durationMin: 60,
           mode: "cycle",
+          category: "shop",
           checklist: ["Browse the vintage shops"],
         },
         {
@@ -199,6 +233,7 @@ export function createDemoTrip(): Trip {
           lng: 29.0072,
           durationMin: 50,
           mode: "cycle",
+          category: "viewpoint",
         },
         {
           name: "Dolmabahçe Palace",
@@ -206,6 +241,7 @@ export function createDemoTrip(): Trip {
           lng: 29.0002,
           durationMin: 90,
           mode: "walk",
+          category: "museum",
           checklist: ["Crystal staircase", "Clock collection"],
         },
         {
@@ -214,6 +250,7 @@ export function createDemoTrip(): Trip {
           lng: 28.82,
           durationMin: 0,
           mode: "metro",
+          category: "other",
           notes: "Buffer time built in for check-in — don't linger too long at the palace!",
         },
       ],
