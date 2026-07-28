@@ -31,7 +31,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
     <>
       <div />
       <div className="flex justify-center">
-        <div className="w-px flex-1 bg-stone-200" style={{ minHeight: 28 }} />
+        <div className="border-l-2 border-dashed border-stone-300/70" style={{ minHeight: 28 }} />
       </div>
       <div className="flex flex-col gap-1.5 py-1.5 text-xs text-stone-500">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

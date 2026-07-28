@@ -1,11 +1,28 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { LatLng } from "@/lib/types";
 
 /**
  * Ephemeral "real-life RPG" state for the live trip experience — deliberately
- * separate from useTripStore (the persisted itinerary + undo history). None of
- * this is saved or shareable: it resets on reload, same as a session HUD would.
+ * separate from useTripStore (the persisted itinerary + undo history). Most
+ * of this is NOT saved server-side, but a slice of it (below) survives a
+ * refresh via localStorage so a friend mid-walk doesn't lose their progress
+ * to an accidental reload.
  */
+
+// A no-op storage on the server (localStorage doesn't exist there) — combined
+// with `skipHydration` below, this keeps SSR's first render deterministic and
+// avoids a hydration mismatch. The real read happens in JourneyEngine's mount
+// effect via `useJourneyStore.persist.rehydrate()`.
+const safeStorage = {
+  getItem: (name: string) => (typeof window === "undefined" ? null : window.localStorage.getItem(name)),
+  setItem: (name: string, value: string) => {
+    if (typeof window !== "undefined") window.localStorage.setItem(name, value);
+  },
+  removeItem: (name: string) => {
+    if (typeof window !== "undefined") window.localStorage.removeItem(name);
+  },
+};
 
 // Full-to-empty over these many seconds — tuned to be noticeable within a demo
 // session rather than a literal real-world day.
@@ -60,63 +77,87 @@ interface JourneyState {
 
 const CAT_MILESTONES = [1, 5, 10, 25, 50];
 
-export const useJourneyStore = create<JourneyState>()((set, get) => ({
-  isEditMode: false,
-  toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode })),
+export const useJourneyStore = create<JourneyState>()(
+  persist(
+    (set, get) => ({
+      isEditMode: false,
+      toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode })),
 
-  dayStarted: false,
-  liveLocation: null,
-  watchId: null,
-  startDay: () => set({ dayStarted: true }),
-  stopDay: () => {
-    const id = get().watchId;
-    if (id != null && typeof navigator !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.clearWatch(id);
+      dayStarted: false,
+      liveLocation: null,
+      watchId: null,
+      startDay: () => set({ dayStarted: true }),
+      stopDay: () => {
+        const id = get().watchId;
+        if (id != null && typeof navigator !== "undefined" && navigator.geolocation) {
+          navigator.geolocation.clearWatch(id);
+        }
+        set({ dayStarted: false, watchId: null, liveLocation: null, restingStepId: null });
+      },
+      setWatchId: (id) => set({ watchId: id }),
+      setLiveLocation: (loc) => set({ liveLocation: loc }),
+
+      fatigue: 0,
+      hunger: 100,
+      thirst: 100,
+      addFatigue: (amount) => set((s) => ({ fatigue: Math.min(100, Math.max(0, s.fatigue + amount)) })),
+      feed: (amount) => set((s) => ({ hunger: Math.min(100, s.hunger + amount) })),
+      drinkWater: () => {
+        set((s) => ({ thirst: Math.min(100, s.thirst + WATER_BOOST) }));
+      },
+      tickDecay: (seconds) =>
+        set((s) => ({
+          hunger: Math.max(0, s.hunger - HUNGER_DECAY_PER_SEC * seconds),
+          thirst: Math.max(0, s.thirst - THIRST_DECAY_PER_SEC * seconds),
+        })),
+      tickRecovery: (seconds) =>
+        set((s) => ({ fatigue: Math.max(0, s.fatigue - FATIGUE_RECOVERY_PER_SEC * seconds) })),
+
+      restingStepId: null,
+      setRestingStepId: (id) => set({ restingStepId: id }),
+
+      catsPetted: 0,
+      lastCatMilestone: null,
+      petCat: () =>
+        set((s) => {
+          const next = s.catsPetted + 1;
+          return {
+            catsPetted: next,
+            lastCatMilestone: CAT_MILESTONES.includes(next) ? next : s.lastCatMilestone,
+          };
+        }),
+      clearCatMilestone: () => set({ lastCatMilestone: null }),
+
+      arrival: null,
+      celebratedStepIds: [],
+      triggerArrival: (stepId, stepName) =>
+        set((s) => {
+          if (s.celebratedStepIds.includes(stepId)) return {};
+          return { arrival: { stepId, stepName }, celebratedStepIds: [...s.celebratedStepIds, stepId] };
+        }),
+      clearArrival: () => set({ arrival: null }),
+    }),
+    {
+      name: "touristguider-journey",
+      storage: createJSONStorage(() => safeStorage),
+      // We hydrate manually (see JourneyEngine's mount effect) so the very
+      // first client render matches the server's — otherwise a friend who
+      // already has progress saved would see a React hydration mismatch.
+      skipHydration: true,
+      // liveLocation/watchId/arrival/isEditMode are intentionally excluded —
+      // location and the "just arrived" celebration should always start
+      // fresh on reload, and View Mode should always be the default.
+      partialize: (s) => ({
+        dayStarted: s.dayStarted,
+        fatigue: s.fatigue,
+        hunger: s.hunger,
+        thirst: s.thirst,
+        restingStepId: s.restingStepId,
+        catsPetted: s.catsPetted,
+        celebratedStepIds: s.celebratedStepIds,
+      }),
     }
-    set({ dayStarted: false, watchId: null, liveLocation: null, restingStepId: null });
-  },
-  setWatchId: (id) => set({ watchId: id }),
-  setLiveLocation: (loc) => set({ liveLocation: loc }),
-
-  fatigue: 0,
-  hunger: 100,
-  thirst: 100,
-  addFatigue: (amount) => set((s) => ({ fatigue: Math.min(100, Math.max(0, s.fatigue + amount)) })),
-  feed: (amount) => set((s) => ({ hunger: Math.min(100, s.hunger + amount) })),
-  drinkWater: () => {
-    set((s) => ({ thirst: Math.min(100, s.thirst + WATER_BOOST) }));
-  },
-  tickDecay: (seconds) =>
-    set((s) => ({
-      hunger: Math.max(0, s.hunger - HUNGER_DECAY_PER_SEC * seconds),
-      thirst: Math.max(0, s.thirst - THIRST_DECAY_PER_SEC * seconds),
-    })),
-  tickRecovery: (seconds) =>
-    set((s) => ({ fatigue: Math.max(0, s.fatigue - FATIGUE_RECOVERY_PER_SEC * seconds) })),
-
-  restingStepId: null,
-  setRestingStepId: (id) => set({ restingStepId: id }),
-
-  catsPetted: 0,
-  lastCatMilestone: null,
-  petCat: () =>
-    set((s) => {
-      const next = s.catsPetted + 1;
-      return {
-        catsPetted: next,
-        lastCatMilestone: CAT_MILESTONES.includes(next) ? next : s.lastCatMilestone,
-      };
-    }),
-  clearCatMilestone: () => set({ lastCatMilestone: null }),
-
-  arrival: null,
-  celebratedStepIds: [],
-  triggerArrival: (stepId, stepName) =>
-    set((s) => {
-      if (s.celebratedStepIds.includes(stepId)) return {};
-      return { arrival: { stepId, stepName }, celebratedStepIds: [...s.celebratedStepIds, stepId] };
-    }),
-  clearArrival: () => set({ arrival: null }),
-}));
+  )
+);
 
 export { FATIGUE_PER_METER, MEAL_BOOST };

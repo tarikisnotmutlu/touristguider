@@ -47,6 +47,10 @@ body {
   color: var(--foreground);
 }
 
+.maplibregl-map {
+  width: 100% !important;
+  height: 100% !important;
+}
 .maplibregl-ctrl-attrib {
   font-size: 10px !important;
 }

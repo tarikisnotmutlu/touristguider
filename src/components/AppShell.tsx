@@ -18,7 +18,7 @@ const MapView = dynamic(() => import("./MapView"), { ssr: false });
 export default function AppShell() {
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-stone-50">
-      <div className="absolute inset-0 z-0">
+      <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
         <MapView />
       </div>
 

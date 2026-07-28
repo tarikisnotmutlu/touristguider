@@ -1,6 +1,7 @@
 "use client";
 
 import { useTripStore } from "@/store/useTripStore";
+import { useJourneyStore } from "@/store/useJourneyStore";
 import DayTabs from "./DayTabs";
 import DayStartEditor from "./DayStartEditor";
 import Timeline from "./Timeline";
@@ -20,6 +21,7 @@ export default function PanelContent() {
   const trip = useTripStore((s) => s.trip);
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const saveState = useTripStore((s) => s.saveState);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
   const day = trip.days[activeDayIndex];
 
   return (
@@ -29,12 +31,12 @@ export default function PanelContent() {
           <h1 className="truncate text-sm font-bold tracking-tight text-stone-800">{trip.title}</h1>
           <p className="truncate text-[11px] text-stone-400">
             {trip.friendName ? `for ${trip.friendName} · ` : ""}
-            {SAVE_LABEL[saveState]}
+            {isEditMode ? SAVE_LABEL[saveState] : ""}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <EditModeToggle />
-          <UndoRedoButtons />
+          {isEditMode && <UndoRedoButtons />}
           <TripMenu />
           <ShareButton />
         </div>

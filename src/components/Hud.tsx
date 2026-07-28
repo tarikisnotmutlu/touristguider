@@ -16,6 +16,14 @@ function barColor(value: number, invert: boolean) {
   return "var(--color-terracotta-600)";
 }
 
+/** 4-stage fatigue mood, from fresh to exhausted. */
+function fatigueEmoji(value: number) {
+  if (value <= 25) return "😊";
+  if (value <= 60) return "😮‍💨";
+  if (value <= 85) return "😅";
+  return "😵";
+}
+
 function Bar({ emoji, label, value, invert }: { emoji: string; label: string; value: number; invert: boolean }) {
   return (
     <div className="flex items-center gap-1.5" title={label}>
@@ -49,7 +57,7 @@ export default function Hud() {
         transition={SPRING}
         className="glass-panel pointer-events-auto flex items-center gap-3 rounded-full px-4 py-2 shadow-lg"
       >
-        <Bar emoji="🥵" label="Fatigue" value={fatigue} invert />
+        <Bar emoji={fatigueEmoji(fatigue)} label="Fatigue" value={fatigue} invert />
         <Bar emoji="🍽️" label="Hunger" value={hunger} invert={false} />
         <Bar emoji="💧" label="Thirst" value={thirst} invert={false} />
 

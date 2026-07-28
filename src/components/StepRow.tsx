@@ -33,8 +33,8 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
   return (
     <>
       <div className="pt-2 text-right">
-        <p className="text-xs font-semibold text-stone-700">{step.arrival}</p>
-        <p className="text-[10px] text-stone-400">{step.departure}</p>
+        <p className="font-mono text-xs uppercase tracking-wider text-stone-500">{step.arrival}</p>
+        <p className="font-mono text-[10px] uppercase tracking-wider text-stone-400">{step.departure}</p>
       </div>
 
       <div className="flex justify-center pt-1.5">
@@ -42,7 +42,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           onClick={() => toggleStepCompleted(dayId, step.id)}
           type="button"
           title={step.completed ? "Mark as not done" : "Mark as done"}
-          className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-white text-sm shadow"
+          className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-white text-sm shadow-[0_0_10px_rgba(111,138,97,0.45)]"
           style={{ background: step.completed ? "var(--color-sage-500)" : CATEGORY_COLOR[step.category] }}
         >
           <AnimatePresence mode="wait" initial={false}>
@@ -81,10 +81,10 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.6 : 1 }}
         transition={SPRING}
         className={clsx(
-          "mb-2 flex items-start gap-2 rounded-2xl border p-2.5 shadow-sm transition-colors",
+          "mb-2 flex items-start gap-2 rounded-2xl border p-5 backdrop-blur-xl transition-colors shadow-[0_4px_20px_rgba(0,0,0,0.03)]",
           step.id === activeStepId
-            ? "border-sage-300 bg-sage-50"
-            : "border-stone-200 bg-white/90"
+            ? "border-sage-300 bg-sage-50/90"
+            : "border-stone-200/80 bg-white/85"
         )}
       >
         {isEditMode && (

@@ -20,6 +20,12 @@ const TICK_MS = 2000;
 export default function JourneyEngine() {
   const dayStarted = useJourneyStore((s) => s.dayStarted);
 
+  // --- 0. rehydrate persisted fatigue/hunger/thirst/cats/dayStarted from
+  //     localStorage once we're on the client (skipped during SSR) ---
+  useEffect(() => {
+    useJourneyStore.persist.rehydrate();
+  }, []);
+
   // --- 1. decay/recovery ticking ---
   useEffect(() => {
     const interval = setInterval(() => {

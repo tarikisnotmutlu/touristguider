@@ -1,16 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { isIOS } from "@/lib/os";
 
-const IOS_TARGET = "facetime://+491637653246";
-const OTHER_TARGET = "https://wa.me/491637653246";
+const WHATSAPP_TARGET = "https://wa.me/491637653246";
 
 /** Elegant, single-tap emergency contact — no confirmation menu by design.
- *  iOS opens FaceTime directly; everything else opens WhatsApp. */
+ *  Always opens WhatsApp, on every OS. */
 export default function PanicButton() {
   function handlePress() {
-    window.location.href = isIOS() ? IOS_TARGET : OTHER_TARGET;
+    window.location.href = WHATSAPP_TARGET;
   }
 
   return (
@@ -21,7 +19,7 @@ export default function PanicButton() {
       transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
       className="fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-terracotta-500 to-terracotta-700 text-xl font-bold text-white shadow-lg shadow-terracotta-900/30 lg:bottom-6"
       aria-label="Emergency contact"
-      title="Emergency — call or message"
+      title="Emergency — message on WhatsApp"
     >
       SOS
     </motion.button>
