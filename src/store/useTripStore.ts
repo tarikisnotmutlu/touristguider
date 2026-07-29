@@ -316,9 +316,23 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
-        if (!step) return;
+        if (!day || !step) return;
         recordHistory(state);
-        step.completed = !step.completed;
+        const wasCompleted = step.completed;
+        step.completed = !wasCompleted;
+        if (!wasCompleted && step.arrival) {
+          // Marking done now — swap the planned duration for how long the stop
+          // actually took (arrival -> now), so every later ETA in the day shifts
+          // to reflect real progress instead of the original static schedule.
+          const [h, m] = step.arrival.split(":").map(Number);
+          const arrivalToday = new Date();
+          arrivalToday.setHours(h, m, 0, 0);
+          const elapsedMin = Math.round((Date.now() - arrivalToday.getTime()) / 60000);
+          if (elapsedMin >= 1) {
+            step.durationMin = elapsedMin;
+          }
+        }
+        recalcDay(day);
       }),
 
     toggleChecklistItem: (dayId, stepId, itemId) =>

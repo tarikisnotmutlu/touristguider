@@ -72,27 +72,32 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         )}
 
         <div className="min-w-0 flex-1" onClick={() => !isEditMode && setActiveStepId(step.id)}>
-          {isEditMode ? (
-            <input
-              value={step.name}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => updateStep(dayId, step.id, { name: e.target.value })}
-              className="w-full truncate rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-900 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
-            />
-          ) : (
-            <p
-              className={clsx(
-                "cursor-pointer truncate text-[17px] font-semibold tracking-tight text-stone-900 transition-all",
-                step.completed && "text-stone-400 line-through decoration-stone-300"
-              )}
-              onClick={() => setActiveStepId(step.id)}
-            >
-              {step.name}
-            </p>
-          )}
-          <span className="mt-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
-            {tag.text}
-          </span>
+          <div className="flex flex-row items-center justify-between gap-2">
+            {isEditMode ? (
+              <input
+                value={step.name}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => updateStep(dayId, step.id, { name: e.target.value })}
+                className="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-900 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
+              />
+            ) : (
+              <p
+                className={clsx(
+                  "min-w-0 flex-1 cursor-pointer truncate text-[17px] font-semibold tracking-tight text-stone-900 transition-all",
+                  step.completed && "text-stone-400 line-through decoration-stone-300"
+                )}
+                onClick={() => setActiveStepId(step.id)}
+              >
+                {step.name}
+              </p>
+            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
+                {tag.text}
+              </span>
+              {step.arrival && <span className="text-xs font-medium text-stone-400">{step.arrival}</span>}
+            </div>
+          </div>
           {step.checklist.length > 0 && (
             <p className="mt-1 text-[11px] text-stone-400">
               ✅ {doneCount}/{step.checklist.length}

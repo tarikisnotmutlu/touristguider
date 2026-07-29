@@ -42,57 +42,18 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
       <div className="flex justify-center">
         <div className="border-l-2 border-dashed border-stone-300" style={{ minHeight: 28 }} />
       </div>
-      <div className="flex flex-col gap-1.5 py-1.5">
-        <div className="flex items-center gap-2">
-          <div className="flex flex-1 items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
-            <span>{TRANSPORT_ICON[route.mode]}</span>
-            <span>
-              {min}m • {km}km
-            </span>
-          </div>
-          <button
-            onClick={handleNavigate}
-            type="button"
-            title="Navigate"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600"
-          >
-            🧭
-          </button>
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto py-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
+          <span>{TRANSPORT_ICON[route.mode]}</span>
+          <span>
+            {min}m • {km}km
+          </span>
         </div>
 
-        {isEditMode && (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-1 text-xs text-stone-500">
-            <div className="flex gap-0.5">
-              {TRANSPORT_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  title={TRANSPORT_LABEL[mode]}
-                  onClick={() => setSegmentMode(dayId, segIndex, mode)}
-                  className={clsx(
-                    "rounded-full px-1.5 py-0.5 text-sm leading-none transition",
-                    mode === route.mode ? "bg-sage-100 ring-1 ring-sage-400" : "opacity-40 hover:opacity-80"
-                  )}
-                >
-                  {TRANSPORT_ICON[mode]}
-                </button>
-              ))}
-            </div>
-            {route.isManual && (
-              <span className="flex items-center gap-1 rounded-full bg-terracotta-100 px-2 py-0.5 text-terracotta-700">
-                ✏️ edited
-                <button type="button" className="underline" onClick={() => resetRouteToAuto(dayId, segIndex)}>
-                  reset
-                </button>
-              </span>
-            )}
-          </div>
-        )}
-
         {route.mode === "transit" && (isEditMode || route.transitLine) && (
-          <div className="pl-1">
+          <>
             {!isEditMode ? (
-              <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700">
+              <span className="shrink-0 rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700">
                 {route.transitLine}
               </span>
             ) : editingLine ? (
@@ -101,6 +62,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
                   e.preventDefault();
                   commitLine();
                 }}
+                className="shrink-0"
               >
                 <input
                   autoFocus
@@ -109,7 +71,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
                   onBlur={commitLine}
                   onKeyDown={(e) => e.key === "Escape" && setEditingLine(false)}
                   placeholder="e.g. M2 Metro to Taksim"
-                  className="w-44 rounded-full border border-stone-200 bg-white/80 px-2.5 py-1 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+                  className="w-36 rounded-full border border-stone-200 bg-white/80 px-2.5 py-1 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
                 />
               </form>
             ) : (
@@ -120,17 +82,54 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
                   setEditingLine(true);
                 }}
                 className={clsx(
-                  "rounded-full px-2.5 py-1 text-left text-xs transition",
+                  "shrink-0 rounded-full px-2.5 py-1 text-left text-xs transition",
                   route.transitLine
                     ? "bg-stone-100 font-medium text-stone-700 hover:bg-stone-200"
                     : "text-stone-400 underline decoration-dotted underline-offset-2 hover:text-stone-600"
                 )}
               >
-                {route.transitLine ?? "+ add the line (e.g. M2 Metro to Taksim)"}
+                {route.transitLine ?? "+ add line"}
               </button>
             )}
+          </>
+        )}
+
+        {isEditMode && (
+          <div className="flex shrink-0 items-center gap-0.5">
+            {TRANSPORT_MODES.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                title={TRANSPORT_LABEL[mode]}
+                onClick={() => setSegmentMode(dayId, segIndex, mode)}
+                className={clsx(
+                  "rounded-full px-1.5 py-0.5 text-sm leading-none transition",
+                  mode === route.mode ? "bg-sage-100 ring-1 ring-sage-400" : "opacity-40 hover:opacity-80"
+                )}
+              >
+                {TRANSPORT_ICON[mode]}
+              </button>
+            ))}
           </div>
         )}
+
+        {isEditMode && route.isManual && (
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-terracotta-100 px-2 py-0.5 text-xs text-terracotta-700">
+            ✏️
+            <button type="button" className="underline" onClick={() => resetRouteToAuto(dayId, segIndex)}>
+              reset
+            </button>
+          </span>
+        )}
+
+        <button
+          onClick={handleNavigate}
+          type="button"
+          title="Navigate"
+          className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600"
+        >
+          🧭
+        </button>
       </div>
     </>
   );
