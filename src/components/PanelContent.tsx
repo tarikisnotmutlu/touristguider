@@ -74,13 +74,13 @@ export default function PanelContent() {
       </div>
 
       {panelView === "overview" && (
-        <div className="flex-1 overflow-y-auto overscroll-contain pt-2">
+        <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pt-2">
           <OverviewView />
         </div>
       )}
 
       {panelView === "unplanned" && (
-        <div className="flex-1 overflow-y-auto overscroll-contain pt-2">
+        <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pt-2">
           <UnplannedView />
         </div>
       )}
@@ -102,7 +102,7 @@ export default function PanelContent() {
             )}
             <StartDayButton />
           </div>
-          <div className="flex-1 overflow-y-auto overscroll-contain">
+          <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
             <Timeline dayId={day.id} />
           </div>
         </>

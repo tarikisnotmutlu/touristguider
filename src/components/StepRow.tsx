@@ -83,12 +83,17 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         </button>
       </div>
 
-      <div ref={setNodeRef} style={dragStyle} className="mb-2 flex w-full flex-row items-center gap-2">
+      <div ref={setNodeRef} style={dragStyle} className="mb-2 flex w-full max-w-full flex-row items-center gap-2">
       <motion.div
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.3 : 1 }}
         transition={SPRING}
         className={clsx(
-          "flex w-full flex-1 flex-row items-center gap-3 rounded-[20px] border p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
+          // min-w-0 is the golden rule of flexbox truncation — without it this
+          // flex item's default min-width:auto wins over its sibling toggle's
+          // flex-none width, and (combined with the old `w-full` here fighting
+          // the flex layout) forced the whole card past the viewport instead
+          // of letting the title inside it actually truncate.
+          "flex min-w-0 flex-1 flex-row items-center gap-3 rounded-[20px] border p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
           step.completed && "grayscale-[30%]",
           step.id === activeStepId ? "border-sage-300 bg-sage-50/95" : "border-white/60 bg-white/80"
         )}
@@ -105,8 +110,8 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </button>
         )}
 
-        <div className="min-w-0 flex-1 flex-col gap-1" onClick={() => !isEditMode && setActiveStepId(step.id)}>
-          <div className="flex flex-row items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1" onClick={() => !isEditMode && setActiveStepId(step.id)}>
+          <div className="flex min-w-0 flex-row items-center justify-between gap-2">
             {isEditMode ? (
               <input
                 value={step.name}
