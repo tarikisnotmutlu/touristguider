@@ -28,6 +28,7 @@ export default function JourneyEngine() {
     const result = useJourneyStore.persist.rehydrate();
     Promise.resolve(result).then(() => {
       const journey = useJourneyStore.getState();
+      journey.checkMidnightReset();
       if (journey.panelView !== "day") return;
       const dayCount = useTripStore.getState().trip.days.length;
       if (dayCount === 0) return;
@@ -36,13 +37,15 @@ export default function JourneyEngine() {
     });
   }, []);
 
-  // --- 1. decay/recovery ticking ---
+  // --- 1. decay/recovery ticking, plus a per-tick check for the Istanbul
+  //     midnight rollover (fatigue/hunger/thirst reset; cats are untouched) ---
   useEffect(() => {
     const interval = setInterval(() => {
       const seconds = TICK_MS / 1000;
       const journey = useJourneyStore.getState();
       journey.tickDecay(seconds);
       if (journey.restingStepId) journey.tickRecovery(seconds);
+      journey.checkMidnightReset();
     }, TICK_MS);
     return () => clearInterval(interval);
   }, []);

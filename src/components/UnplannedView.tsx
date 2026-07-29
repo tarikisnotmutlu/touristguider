@@ -3,7 +3,6 @@
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import { CATEGORY_TAG } from "@/lib/categories";
-import { thumbnailUrl } from "@/lib/thumbnail";
 import PlaceSearch from "./PlaceSearch";
 
 export default function UnplannedView() {
@@ -27,14 +26,8 @@ export default function UnplannedView() {
         return (
           <div
             key={place.id}
-            className="flex items-center gap-3 rounded-2xl border border-stone-200/80 bg-white/85 p-3 shadow-[0_4px_20px_rgba(0,0,0,0.03)] backdrop-blur-xl"
+            className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-2.5 shadow-sm"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbnailUrl(place.id, 100)}
-              alt=""
-              className="h-14 w-14 shrink-0 rounded-lg object-cover"
-            />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold tracking-tight text-stone-800">{place.name}</p>
               <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${tag.className}`}>

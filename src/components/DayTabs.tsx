@@ -54,14 +54,14 @@ export default function DayTabs() {
       <TabPill active={panelView === "overview"} onClick={() => setPanelView("overview")}>
         Overview
       </TabPill>
-      <TabPill active={panelView === "unplanned"} onClick={() => setPanelView("unplanned")}>
-        Unplanned
-      </TabPill>
       {days.map((day, i) => (
         <TabPill key={day.id} active={panelView === "day" && i === activeDayIndex} onClick={() => selectDay(i)}>
           {day.label}
         </TabPill>
       ))}
+      <TabPill active={panelView === "unplanned"} onClick={() => setPanelView("unplanned")}>
+        Unplanned
+      </TabPill>
     </div>
   );
 }

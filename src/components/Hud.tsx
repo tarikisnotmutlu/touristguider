@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useJourneyStore, CAT_MILESTONES } from "@/store/useJourneyStore";
+import { useJourneyStore, MEAL_BOOST } from "@/store/useJourneyStore";
 import { vibrate } from "@/lib/haptics";
 
 const SPRING = { type: "spring", bounce: 0.15, duration: 0.5 } as const;
@@ -20,17 +20,8 @@ function ringColor(value: number, invert: boolean) {
 function fatigueEmoji(value: number) {
   if (value <= 25) return "😊";
   if (value <= 60) return "😮‍💨";
-  if (value <= 85) return "😅";
+  if (value <= 85) return "😥";
   return "😵";
-}
-
-/** How far `count` is between the previous and next cat milestone, as 0-100 —
- *  keeps growing in 25-step chunks once past the last defined milestone. */
-function catRingProgress(count: number) {
-  const prev = [0, ...CAT_MILESTONES].reduce((acc, m) => (m <= count ? m : acc), 0);
-  const next = CAT_MILESTONES.find((m) => m > count) ?? prev + 25;
-  const span = next - prev;
-  return span > 0 ? ((count - prev) / span) * 100 : 100;
 }
 
 const SIZE = 40;
@@ -38,55 +29,85 @@ const STROKE = 4;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-/** Apple Watch-style circular progress ring, with arbitrary content centered inside. */
+/** Apple Watch-style circular progress ring. Interactive when `onTap` is
+ *  given — becomes a tappable button that fills the ring on the spot
+ *  (Thirst/Hunger), rather than routing through a separate action button. */
 function Ring({
   value,
   color,
   title,
+  onTap,
   children,
 }: {
   value: number;
   color: string;
   title: string;
+  onTap?: () => void;
   children: React.ReactNode;
 }) {
   const offset = CIRCUMFERENCE * (1 - Math.max(0, Math.min(100, value)) / 100);
+  const svg = (
+    <svg width={SIZE} height={SIZE} className="-rotate-90">
+      <circle
+        cx={SIZE / 2}
+        cy={SIZE / 2}
+        r={RADIUS}
+        fill="none"
+        stroke="rgba(41,37,36,0.08)"
+        strokeWidth={STROKE}
+      />
+      <motion.circle
+        cx={SIZE / 2}
+        cy={SIZE / 2}
+        r={RADIUS}
+        fill="none"
+        stroke={color}
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        strokeDasharray={CIRCUMFERENCE}
+        initial={false}
+        animate={{ strokeDashoffset: offset }}
+        transition={SPRING}
+      />
+    </svg>
+  );
+
+  if (onTap) {
+    return (
+      <motion.button
+        type="button"
+        onClick={onTap}
+        whileTap={{ scale: 0.88 }}
+        transition={SPRING}
+        title={title}
+        className="relative shrink-0"
+        style={{ width: SIZE, height: SIZE }}
+      >
+        {svg}
+        <div className="absolute inset-0 flex items-center justify-center text-sm leading-none">
+          {children}
+        </div>
+      </motion.button>
+    );
+  }
+
   return (
     <div className="relative shrink-0" style={{ width: SIZE, height: SIZE }} title={title}>
-      <svg width={SIZE} height={SIZE} className="-rotate-90">
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          stroke="rgba(41,37,36,0.08)"
-          strokeWidth={STROKE}
-        />
-        <motion.circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          stroke={color}
-          strokeWidth={STROKE}
-          strokeLinecap="round"
-          strokeDasharray={CIRCUMFERENCE}
-          initial={false}
-          animate={{ strokeDashoffset: offset }}
-          transition={SPRING}
-        />
-      </svg>
+      {svg}
       <div className="absolute inset-0 flex items-center justify-center text-sm leading-none">{children}</div>
     </div>
   );
 }
 
-/** Floating glassmorphism status HUD, RPG-style — Apple Watch-esque radial rings. */
+/** Floating glassmorphism status HUD, RPG-style — Apple Watch-esque radial
+ *  rings. Thirst/Hunger rings are themselves the "drink"/"eat" buttons; no
+ *  separate controls needed. */
 export default function Hud() {
   const fatigue = useJourneyStore((s) => s.fatigue);
   const hunger = useJourneyStore((s) => s.hunger);
   const thirst = useJourneyStore((s) => s.thirst);
   const drinkWater = useJourneyStore((s) => s.drinkWater);
+  const feed = useJourneyStore((s) => s.feed);
   const catsPetted = useJourneyStore((s) => s.catsPetted);
   const petCat = useJourneyStore((s) => s.petCat);
 
@@ -101,28 +122,30 @@ export default function Hud() {
         <Ring value={fatigue} color={ringColor(fatigue, true)} title="Fatigue">
           {fatigueEmoji(fatigue)}
         </Ring>
-        <Ring value={hunger} color={ringColor(hunger, false)} title="Hunger">
+        <Ring
+          value={hunger}
+          color={ringColor(hunger, false)}
+          title="Tap to eat"
+          onTap={() => {
+            feed(MEAL_BOOST);
+            vibrate(50);
+          }}
+        >
           🍽️
         </Ring>
-        <Ring value={thirst} color={ringColor(thirst, false)} title="Thirst">
+        <Ring
+          value={thirst}
+          color={ringColor(thirst, false)}
+          title="Tap to drink"
+          onTap={() => {
+            drinkWater();
+            vibrate(50);
+          }}
+        >
           💧
         </Ring>
 
         <div className="h-4 w-px bg-stone-300/70" />
-
-        <motion.button
-          onClick={() => {
-            drinkWater();
-            vibrate(50);
-          }}
-          whileTap={{ scale: 0.85 }}
-          transition={SPRING}
-          type="button"
-          title="Drink water"
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-100 text-sm hover:bg-sky-200"
-        >
-          💧
-        </motion.button>
 
         <motion.button
           onClick={() => {
@@ -133,16 +156,9 @@ export default function Hud() {
           transition={SPRING}
           type="button"
           title="Pet a cat"
-          className="relative"
+          className="flex items-center gap-1 rounded-full px-1.5 text-sm font-semibold text-stone-700"
         >
-          <Ring value={catRingProgress(catsPetted)} color="var(--color-terracotta-500)" title="Cats petted">
-            🐾
-          </Ring>
-          {catsPetted > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-white bg-stone-800 px-0.5 text-[8px] font-bold text-white">
-              {catsPetted}
-            </span>
-          )}
+          🐾 {catsPetted}
         </motion.button>
       </motion.div>
     </div>

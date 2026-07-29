@@ -85,10 +85,6 @@ export interface UnplannedPlace {
 export interface Trip {
   id: string;
   title: string;
-  friendName?: string;
-  /** ISO date strings ("YYYY-MM-DD"), optional — set via the "Choose dates" pill. */
-  startDate?: string;
-  endDate?: string;
   days: Day[];
   hiddenGems: HiddenGem[];
   unplanned: UnplannedPlace[];

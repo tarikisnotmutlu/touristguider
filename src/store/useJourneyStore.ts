@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { LatLng } from "@/lib/types";
+import { istanbulDateString } from "@/lib/istanbulDate";
 
 /**
  * Ephemeral "real-life RPG" state for the live trip experience — deliberately
@@ -84,6 +85,11 @@ interface JourneyState {
   celebratedStepIds: string[];
   triggerArrival: (stepId: string, stepName: string) => void;
   clearArrival: () => void;
+
+  /** Istanbul-local ("YYYY-MM-DD") date the stats were last reset for. Checked
+   *  on a timer in JourneyEngine — cat count is deliberately untouched. */
+  lastResetDate: string | null;
+  checkMidnightReset: () => void;
 }
 
 export const CAT_MILESTONES = [1, 5, 10, 25, 50];
@@ -152,6 +158,15 @@ export const useJourneyStore = create<JourneyState>()(
           return { arrival: { stepId, stepName }, celebratedStepIds: [...s.celebratedStepIds, stepId] };
         }),
       clearArrival: () => set({ arrival: null }),
+
+      lastResetDate: null,
+      checkMidnightReset: () => {
+        const today = istanbulDateString();
+        set((s) => {
+          if (s.lastResetDate === today) return {};
+          return { fatigue: 0, hunger: 100, thirst: 100, lastResetDate: today };
+        });
+      },
     }),
     {
       name: "touristguider-journey",
@@ -173,6 +188,7 @@ export const useJourneyStore = create<JourneyState>()(
         celebratedStepIds: s.celebratedStepIds,
         panelView: s.panelView,
         savedDayIndex: s.savedDayIndex,
+        lastResetDate: s.lastResetDate,
       }),
     }
   )

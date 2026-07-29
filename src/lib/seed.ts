@@ -263,7 +263,6 @@ export function createDemoTrip(): Trip {
   return {
     id: genId(),
     title: "Istanbul, 4 Days",
-    friendName: "Alex",
     days: days.map(buildDay),
     hiddenGems: [],
     unplanned: [

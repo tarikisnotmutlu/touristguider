@@ -8,7 +8,6 @@ import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import type { Step } from "@/lib/types";
 import { CATEGORY_TAG } from "@/lib/categories";
-import { thumbnailUrl } from "@/lib/thumbnail";
 
 const SPRING = { type: "spring", bounce: 0.15, duration: 0.5 } as const;
 
@@ -56,7 +55,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.6 : 1 }}
         transition={SPRING}
         className={clsx(
-          "mb-2 flex items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm transition-colors",
+          "mb-2 flex items-center gap-2 rounded-2xl border bg-white p-2.5 shadow-sm transition-colors",
           step.id === activeStepId ? "border-sage-300 bg-sage-50" : "border-stone-200"
         )}
       >
@@ -71,13 +70,6 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
             ⠿
           </button>
         )}
-
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={thumbnailUrl(step.id, 128)}
-          alt=""
-          className="h-16 w-16 shrink-0 rounded-lg object-cover"
-        />
 
         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setActiveStepId(step.id)}>
           <p

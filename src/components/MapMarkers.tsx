@@ -23,7 +23,7 @@ export function StepMarker({
 }
 
 export function StartMarker() {
-  return <div className="tg-start-marker">🏁</div>;
+  return <div className="tg-start-marker">🕛</div>;
 }
 
 export function ViaMarker() {

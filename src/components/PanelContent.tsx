@@ -2,7 +2,6 @@
 
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
-import { thumbnailUrl } from "@/lib/thumbnail";
 import DayTabs from "./DayTabs";
 import DayStartEditor from "./DayStartEditor";
 import Timeline from "./Timeline";
@@ -11,7 +10,6 @@ import ShareButton from "./ShareButton";
 import UndoRedoButtons from "./UndoRedoButtons";
 import TripMenu from "./TripMenu";
 import EditModeToggle from "./EditModeToggle";
-import ChooseDatesPill from "./ChooseDatesPill";
 import OverviewView from "./OverviewView";
 import UnplannedView from "./UnplannedView";
 
@@ -35,8 +33,7 @@ export default function PanelContent() {
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-1">
         <p className="truncate text-[11px] text-stone-400">
-          {trip.friendName ? `for ${trip.friendName}` : ""}
-          {isEditMode && SAVE_LABEL[saveState] ? ` · ${SAVE_LABEL[saveState]}` : ""}
+          {isEditMode ? SAVE_LABEL[saveState] : ""}
         </p>
         <div className="flex shrink-0 items-center gap-1">
           <EditModeToggle />
@@ -46,22 +43,13 @@ export default function PanelContent() {
         </div>
       </div>
 
-      {/* Destination card: thumbnail + title + subtitle + dates, Wanderlog-style. */}
-      <div className="flex shrink-0 items-start gap-3 border-b border-stone-200/70 px-3 pb-3 pt-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={thumbnailUrl(trip.id)}
-          alt=""
-          className="h-16 w-16 shrink-0 rounded-lg object-cover"
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-bold tracking-tight text-stone-800">{trip.title}</h1>
-          <p className="text-xs text-stone-400">
-            {trip.days.length} {trip.days.length === 1 ? "day" : "days"} • {spotCount}{" "}
-            {spotCount === 1 ? "spot" : "spots"}
-          </p>
-          <ChooseDatesPill />
-        </div>
+      {/* Destination card: title + subtitle, Wanderlog-style. */}
+      <div className="flex shrink-0 flex-col gap-0.5 border-b border-stone-200/70 px-3 pb-3 pt-2">
+        <h1 className="truncate text-base font-bold tracking-tight text-stone-800">{trip.title}</h1>
+        <p className="text-xs text-stone-400">
+          {trip.days.length} {trip.days.length === 1 ? "day" : "days"} • {spotCount}{" "}
+          {spotCount === 1 ? "spot" : "spots"}
+        </p>
       </div>
 
       <div className="shrink-0">

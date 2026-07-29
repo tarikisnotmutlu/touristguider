@@ -108,7 +108,6 @@ interface TripState {
   addHiddenGem: (point: LatLng, note: string) => void;
   removeHiddenGem: (id: string) => void;
 
-  setTripDates: (startDate: string, endDate: string) => void;
   addUnplannedPlace: (place: {
     name: string;
     lat: number;
@@ -405,13 +404,6 @@ export const useTripStore = create<TripState>()(
       set((state) => {
         recordHistory(state);
         state.trip.hiddenGems = state.trip.hiddenGems.filter((g) => g.id !== id);
-      }),
-
-    setTripDates: (startDate, endDate) =>
-      set((state) => {
-        recordHistory(state);
-        state.trip.startDate = startDate || undefined;
-        state.trip.endDate = endDate || undefined;
       }),
 
     addUnplannedPlace: (place) =>

@@ -62,7 +62,7 @@ export const CATEGORY_COLOR: Record<PlaceCategory, string> = {
 };
 
 /** Pastel pill styling for the compact card's category tag — emoji + label
- *  baked in together since the tag always reads as one unit (e.g. "✨ Attractions"). */
+ *  baked in together since the tag always reads as one unit (e.g. "⭐ Attractions"). */
 export const CATEGORY_TAG: Record<PlaceCategory, { text: string; className: string }> = {
   mosque: { text: "🕌 Landmarks", className: "bg-indigo-100 text-indigo-700" },
   church: { text: "⛪ Landmarks", className: "bg-indigo-100 text-indigo-700" },
@@ -75,7 +75,7 @@ export const CATEGORY_TAG: Record<PlaceCategory, { text: string; className: stri
   park: { text: "🌳 Outdoors", className: "bg-green-100 text-green-700" },
   viewpoint: { text: "👁️ Viewpoints", className: "bg-cyan-100 text-cyan-700" },
   beach: { text: "🏖️ Beach", className: "bg-yellow-100 text-yellow-700" },
-  attraction: { text: "✨ Attractions", className: "bg-pink-100 text-pink-700" },
+  attraction: { text: "⭐ Attractions", className: "bg-pink-100 text-pink-700" },
   other: { text: "📍 Place", className: "bg-stone-100 text-stone-600" },
 };
 
