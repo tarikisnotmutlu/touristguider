@@ -221,7 +221,7 @@ export default function MapView() {
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
       <MapGL
         ref={mapRef}
         mapStyle={CARTO_POSITRON_STYLE}
@@ -237,7 +237,7 @@ export default function MapView() {
         onTouchMove={onMove}
         onMouseUp={endDrag}
         onTouchEnd={endDrag}
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100vw", height: "100vh" }}
       >
         <NavigationControl position="top-right" showCompass={false} />
         <AttributionControl position="bottom-right" compact />
@@ -378,17 +378,6 @@ export default function MapView() {
             setPendingGemPoint(null);
           }}
         />
-      )}
-
-      {/* Tile load can take a beat on a cold connection — without this, that
-          window reads as "the map is broken" instead of "it's loading". */}
-      {!ready && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-stone-100">
-          <div className="flex flex-col items-center gap-2 text-stone-400">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-500" />
-            <p className="text-xs font-medium">Loading map…</p>
-          </div>
-        </div>
       )}
     </div>
   );
