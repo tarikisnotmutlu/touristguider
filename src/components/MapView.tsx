@@ -248,7 +248,7 @@ export default function MapView() {
         style={{ width: "100vw", height: "100vh" }}
       >
         <NavigationControl position="bottom-right" showCompass={false} />
-        <AttributionControl position="bottom-right" compact />
+        <AttributionControl position="bottom-right" compact customAttribution="MapLibre" />
 
         <Marker longitude={day.startPoint.lng} latitude={day.startPoint.lat} anchor="center">
           <StartMarker />
