@@ -167,6 +167,27 @@ export default function MapView() {
       console.error("Map error:", e.error);
     });
 
+    // ---- "wake up" hack ----
+    // MapLibre sometimes finishes its initial layout with a stale canvas
+    // size (e.g. constructed while a parent was still animating/hidden), and
+    // its internal sourceCache tile loading is driven entirely by its own
+    // render loop — if that loop never gets nudged, the canvas can sit there
+    // forever with no tiles ever requested. `resize()` re-reads the
+    // container's real dimensions and `triggerRepaint()` forces a fresh
+    // frame; calling both repeatedly across the first couple seconds (and
+    // again whenever the tab/container could plausibly have changed size)
+    // is a cheap, forceful way to make sure the map never gets stuck blank.
+    function wakeUp() {
+      map.resize();
+      map.triggerRepaint();
+    }
+    const wakeTimers = [0, 100, 300, 600, 1000, 2000].map((ms) => window.setTimeout(wakeUp, ms));
+    window.addEventListener("resize", wakeUp);
+    window.addEventListener("orientationchange", wakeUp);
+    document.addEventListener("visibilitychange", wakeUp);
+    const resizeObserver = new ResizeObserver(wakeUp);
+    resizeObserver.observe(mapContainer.current);
+
     map.on("click", (e: maplibregl.MapMouseEvent) => {
       if (!placingGemRef.current) return;
       setPendingGemPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
@@ -219,6 +240,11 @@ export default function MapView() {
     map.on("touchend", endDrag);
 
     return () => {
+      wakeTimers.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener("resize", wakeUp);
+      window.removeEventListener("orientationchange", wakeUp);
+      document.removeEventListener("visibilitychange", wakeUp);
+      resizeObserver.disconnect();
       startMarkerRef.current?.remove();
       stepMarkersRef.current.forEach((m) => m.remove());
       viaMarkersRef.current.forEach((m) => m.remove());
