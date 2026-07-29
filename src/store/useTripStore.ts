@@ -109,7 +109,7 @@ interface TripState {
   removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
   resetRouteToAuto: (dayId: string, segIndex: number) => void;
 
-  addHiddenGem: (point: LatLng, note: string, geoLocked: boolean) => void;
+  addHiddenGem: (point: LatLng, note: string, geoLocked: boolean, name?: string) => void;
   removeHiddenGem: (id: string) => void;
 
   addUnplannedPlace: (place: {
@@ -440,7 +440,7 @@ export const useTripStore = create<TripState>()(
         recalcDay(day);
       }),
 
-    addHiddenGem: (point, note, geoLocked) =>
+    addHiddenGem: (point, note, geoLocked, name) =>
       set((state) => {
         recordHistory(state);
         state.trip.hiddenGems.push({
@@ -450,6 +450,7 @@ export const useTripStore = create<TripState>()(
           note: note.trim(),
           createdAt: Date.now(),
           geoLocked,
+          name: name?.trim() || undefined,
         });
       }),
 

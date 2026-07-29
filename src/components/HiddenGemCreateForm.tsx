@@ -10,9 +10,10 @@ export default function HiddenGemCreateForm({
   onCancel,
 }: {
   point: LatLng;
-  onSave: (note: string, geoLocked: boolean) => void;
+  onSave: (note: string, geoLocked: boolean, name: string) => void;
   onCancel: () => void;
 }) {
+  const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [geoLocked, setGeoLocked] = useState(true);
 
@@ -29,6 +30,12 @@ export default function HiddenGemCreateForm({
         <p className="mt-0.5 text-[11px] text-stone-400">
           {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
         </p>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Location name (optional, for your reference only)"
+          className="mt-2 w-full rounded-lg border border-stone-200 bg-white/80 px-2.5 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:border-terracotta-400 focus:outline-none"
+        />
         <textarea
           autoFocus
           value={note}
@@ -55,7 +62,7 @@ export default function HiddenGemCreateForm({
             Cancel
           </button>
           <button
-            onClick={() => note.trim() && onSave(note, geoLocked)}
+            onClick={() => note.trim() && onSave(note, geoLocked, name)}
             type="button"
             disabled={!note.trim()}
             className="rounded-full bg-terracotta-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-terracotta-700 disabled:opacity-40"

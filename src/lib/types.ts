@@ -72,6 +72,9 @@ export interface HiddenGem {
   /** When true (the default), the reveal only happens once the visitor is
    *  physically within range — a scavenger-hunt pin rather than a plain one. */
   geoLocked: boolean;
+  /** Trip-creator-only label for telling gems apart while editing — never
+   *  shown to the visitor, who only ever sees the generic ✨ pin. */
+  name?: string;
 }
 
 /** A saved place with no day/time slot yet — lives in the "Unplanned" tab

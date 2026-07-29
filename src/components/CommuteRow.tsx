@@ -43,8 +43,8 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
         <div className="border-l-2 border-dashed border-stone-300" style={{ minHeight: 28 }} />
       </div>
       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto py-1.5">
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
-          <span>{TRANSPORT_ICON[route.mode]}</span>
+        <div className="flex shrink-0 items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700">
+          <span className="text-xs">{TRANSPORT_ICON[route.mode]}</span>
           <span>
             {min}m • {km}km
           </span>
@@ -103,7 +103,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
                 title={TRANSPORT_LABEL[mode]}
                 onClick={() => setSegmentMode(dayId, segIndex, mode)}
                 className={clsx(
-                  "rounded-full px-1.5 py-0.5 text-sm leading-none transition",
+                  "rounded-full px-1.5 py-0.5 text-xs leading-none transition",
                   mode === route.mode ? "bg-sage-100 ring-1 ring-sage-400" : "opacity-40 hover:opacity-80"
                 )}
               >
@@ -126,7 +126,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
           onClick={handleNavigate}
           type="button"
           title="Navigate"
-          className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600"
+          className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-sm text-white transition hover:bg-blue-600"
         >
           🧭
         </button>

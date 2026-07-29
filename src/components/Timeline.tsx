@@ -10,11 +10,13 @@ import CommuteRow from "./CommuteRow";
 import StepRow from "./StepRow";
 import PlaceSearch from "./PlaceSearch";
 import AddCustomStopForm from "./AddCustomStopForm";
+import AddHiddenGemForm from "./AddHiddenGemForm";
 
 export default function Timeline({ dayId }: { dayId: string }) {
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
   const reorderSteps = useTripStore((s) => s.reorderSteps);
   const addStep = useTripStore((s) => s.addStep);
+  const addHiddenGem = useTripStore((s) => s.addHiddenGem);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
 
   const sensors = useSensors(
@@ -60,6 +62,7 @@ export default function Timeline({ dayId }: { dayId: string }) {
         <div className="mt-3">
           <PlaceSearch placeholder="Add a stop…" onSelect={(place) => addStep(day.id, place)} />
           <AddCustomStopForm onAdd={(name, lat, lng) => addStep(day.id, { name, lat, lng })} />
+          <AddHiddenGemForm onAdd={(point, note, geoLocked, name) => addHiddenGem(point, note, geoLocked, name)} />
         </div>
       )}
     </div>

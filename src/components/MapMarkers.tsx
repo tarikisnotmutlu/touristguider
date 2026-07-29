@@ -8,18 +8,24 @@ import { CATEGORY_COLOR, CATEGORY_ICON, type PlaceCategory } from "@/lib/categor
  * is identical.
  */
 
-export function createStepMarkerEl(index: number, category: PlaceCategory, active: boolean): HTMLDivElement {
+export function createStepMarkerEl(
+  index: number,
+  category: PlaceCategory,
+  active: boolean,
+  colorOverride?: string
+): HTMLDivElement {
   const el = document.createElement("div");
   el.className = "tg-marker" + (active ? " tg-marker-active" : "");
-  el.style.borderColor = CATEGORY_COLOR[category];
+  el.style.borderColor = colorOverride ?? CATEGORY_COLOR[category];
   el.innerHTML = `<span class="tg-marker-icon">${CATEGORY_ICON[category]}</span><span class="tg-marker-badge">${index}</span>`;
   return el;
 }
 
-export function createStartMarkerEl(): HTMLDivElement {
+export function createStartMarkerEl(colorOverride?: string): HTMLDivElement {
   const el = document.createElement("div");
   el.className = "tg-start-marker";
   el.textContent = "🕛";
+  if (colorOverride) el.style.borderColor = colorOverride;
   return el;
 }
 

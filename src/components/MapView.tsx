@@ -82,7 +82,7 @@ export default function MapView() {
   const fitDayIdRef = useRef<string | null>(null);
   const routeSignaturesRef = useRef(new Map<string, string>());
 
-  const startMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const startMarkersRef = useRef<maplibregl.Marker[]>([]);
   const stepMarkersRef = useRef<maplibregl.Marker[]>([]);
   const viaMarkersRef = useRef<maplibregl.Marker[]>([]);
   const ghostMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -94,7 +94,19 @@ export default function MapView() {
   const activeStepId = useTripStore((s) => s.activeStepId);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
+  const panelView = useJourneyStore((s) => s.panelView);
+  const setPanelView = useJourneyStore((s) => s.setPanelView);
+  const setSavedDayIndex = useJourneyStore((s) => s.setSavedDayIndex);
   const day = trip.days[activeDayIndex];
+  const overviewMode = panelView === "overview";
+  // In overview mode every day renders at once, each carrying its own real
+  // index into trip.days so its route/marker color stays stable regardless
+  // of which day is "active" — otherwise leaving overview would repaint
+  // every day in the active day's single color.
+  const daysToRender = useMemo(
+    () => (overviewMode ? trip.days.map((d, i) => ({ day: d, index: i })) : day ? [{ day, index: activeDayIndex }] : []),
+    [overviewMode, trip.days, day, activeDayIndex]
+  );
 
   useEffect(() => {
     placingGemRef.current = placingGem;
@@ -107,12 +119,15 @@ export default function MapView() {
   }, [ghostPoint]);
 
   const hitLayerIds = useMemo(() => {
-    if (!day) return [];
+    // Manual-waypoint dragging only makes sense for a single active day's
+    // route being edited — disabled in overview mode, where every day's
+    // routes render at once and there's no single "current" route to bend.
+    if (!day || overviewMode) return [];
     return day.steps
       .map((_, i) => ({ i, mode: day.routes[i]?.mode }))
       .filter(({ mode }) => mode && ROUTABLE_MODES.includes(mode))
       .map(({ i }) => `${lineSourceId(day.id, i)}-hit`);
-  }, [day]);
+  }, [day, overviewMode]);
   useEffect(() => {
     hitLayerIdsRef.current = hitLayerIds;
   }, [hitLayerIds]);
@@ -245,7 +260,7 @@ export default function MapView() {
       window.removeEventListener("orientationchange", wakeUp);
       document.removeEventListener("visibilitychange", wakeUp);
       resizeObserver.disconnect();
-      startMarkerRef.current?.remove();
+      startMarkersRef.current.forEach((m) => m.remove());
       stepMarkersRef.current.forEach((m) => m.remove());
       viaMarkersRef.current.forEach((m) => m.remove());
       ghostMarkerRef.current?.remove();
@@ -314,61 +329,63 @@ export default function MapView() {
   // and can lag well behind the style actually being parsed and queryable)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !day) return;
+    if (!map || daysToRender.length === 0) return;
 
     function applyRoutes() {
-      if (!map || !day) return;
+      if (!map) return;
       const desiredIds = new Set<string>();
 
-      day.steps.forEach((step, i) => {
-        const route = day.routes[i];
-        const from = pointBefore(day, i);
-        const to: LatLng = { lat: step.lat, lng: step.lng };
-        const srcId = lineSourceId(day.id, i);
-        desiredIds.add(srcId);
+      daysToRender.forEach(({ day, index }) => {
+        day.steps.forEach((step, i) => {
+          const route = day.routes[i];
+          const from = pointBefore(day, i);
+          const to: LatLng = { lat: step.lat, lng: step.lng };
+          const srcId = lineSourceId(day.id, i);
+          desiredIds.add(srcId);
 
-        const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
-        const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i });
-        const color = dayColor(activeDayIndex);
-        const routable = ROUTABLE_MODES.includes(route.mode);
-        const signature = route.mode;
+          const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
+          const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i });
+          const color = dayColor(index);
+          const routable = ROUTABLE_MODES.includes(route.mode);
+          const signature = route.mode;
 
-        const existingSource = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
-        if (existingSource && routeSignaturesRef.current.get(srcId) === signature) {
-          existingSource.setData(geojson);
-          if (map.getLayer(`${srcId}-line`)) {
-            map.setPaintProperty(`${srcId}-line`, "line-color", color);
+          const existingSource = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
+          if (existingSource && routeSignaturesRef.current.get(srcId) === signature) {
+            existingSource.setData(geojson);
+            if (map.getLayer(`${srcId}-line`)) {
+              map.setPaintProperty(`${srcId}-line`, "line-color", color);
+            }
+            return;
           }
-          return;
-        }
 
-        if (map.getLayer(`${srcId}-hit`)) map.removeLayer(`${srcId}-hit`);
-        if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
-        if (map.getSource(srcId)) map.removeSource(srcId);
+          if (map.getLayer(`${srcId}-hit`)) map.removeLayer(`${srcId}-hit`);
+          if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
+          if (map.getSource(srcId)) map.removeSource(srcId);
 
-        map.addSource(srcId, { type: "geojson", data: geojson });
-        map.addLayer({
-          id: `${srcId}-line`,
-          type: "line",
-          source: srcId,
-          layout: { "line-cap": "round", "line-join": "round" },
-          paint: {
-            "line-color": color,
-            "line-width": 5,
-            "line-opacity": 0.85,
-            ...(routable ? {} : { "line-dasharray": [1, 2] }),
-          },
-        });
-        if (routable) {
+          map.addSource(srcId, { type: "geojson", data: geojson });
           map.addLayer({
-            id: `${srcId}-hit`,
+            id: `${srcId}-line`,
             type: "line",
             source: srcId,
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#000", "line-width": 24, "line-opacity": 0 },
+            paint: {
+              "line-color": color,
+              "line-width": 5,
+              "line-opacity": 0.85,
+              ...(routable ? {} : { "line-dasharray": [1, 2] }),
+            },
           });
-        }
-        routeSignaturesRef.current.set(srcId, signature);
+          if (routable) {
+            map.addLayer({
+              id: `${srcId}-hit`,
+              type: "line",
+              source: srcId,
+              layout: { "line-cap": "round", "line-join": "round" },
+              paint: { "line-color": "#000", "line-width": 24, "line-opacity": 0 },
+            });
+          }
+          routeSignaturesRef.current.set(srcId, signature);
+        });
       });
 
       for (const [id] of routeSignaturesRef.current) {
@@ -383,43 +400,67 @@ export default function MapView() {
 
     if (map.isStyleLoaded()) applyRoutes();
     else map.once("styledata", applyRoutes);
-  }, [day, activeDayIndex]);
+  }, [daysToRender]);
 
-  // ---- start marker ----
+  // ---- start markers (one per rendered day; overview shows all of them) ----
   // Markers don't need the style to be loaded — they're positioned via the
   // map's projection, which is available as soon as the Map is constructed —
   // so this (like the marker effects below) only gates on the map existing.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !day) return;
-    if (!startMarkerRef.current) {
-      startMarkerRef.current = new maplibregl.Marker({ element: createStartMarkerEl(), anchor: "center" });
-    }
-    startMarkerRef.current.setLngLat([day.startPoint.lng, day.startPoint.lat]).addTo(map);
-  }, [day]);
+    if (!map) return;
+    startMarkersRef.current.forEach((m) => m.remove());
+    startMarkersRef.current = daysToRender.map(({ day, index }) =>
+      new maplibregl.Marker({
+        element: createStartMarkerEl(overviewMode ? dayColor(index) : undefined),
+        anchor: "center",
+      })
+        .setLngLat([day.startPoint.lng, day.startPoint.lat])
+        .addTo(map)
+    );
+  }, [daysToRender, overviewMode]);
 
   // ---- step markers (rebuilt on step list changes or active-step change) ----
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !day) return;
+    if (!map) return;
 
     stepMarkersRef.current.forEach((m) => m.remove());
-    stepMarkersRef.current = day.steps.map((step, i) => {
-      const el = createStepMarkerEl(i + 1, step.category, step.id === activeStepId);
-      el.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        useTripStore.getState().setActiveStepId(step.id);
-      });
-      return new maplibregl.Marker({ element: el, anchor: "center" })
-        .setLngLat([step.lng, step.lat])
-        .addTo(map);
-    });
-  }, [day, activeStepId]);
+    stepMarkersRef.current = daysToRender.flatMap(({ day, index }) =>
+      day.steps.map((step, i) => {
+        const el = createStepMarkerEl(
+          i + 1,
+          step.category,
+          step.id === activeStepId,
+          overviewMode ? dayColor(index) : undefined
+        );
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (overviewMode) {
+            useTripStore.getState().setActiveDayIndex(index);
+            setSavedDayIndex(index);
+            setPanelView("day");
+          }
+          useTripStore.getState().setActiveStepId(step.id);
+        });
+        return new maplibregl.Marker({ element: el, anchor: "center" })
+          .setLngLat([step.lng, step.lat])
+          .addTo(map);
+      })
+    );
+  }, [daysToRender, activeStepId, overviewMode, setPanelView, setSavedDayIndex]);
 
   // ---- draggable manual-waypoint ("via") markers ----
+  // Only for the single active day being edited — overview mode has no one
+  // "current" route to bend, same rationale as hitLayerIds above.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !day) return;
+    if (!map) return;
+    if (!day || overviewMode) {
+      viaMarkersRef.current.forEach((m) => m.remove());
+      viaMarkersRef.current = [];
+      return;
+    }
 
     viaMarkersRef.current.forEach((m) => m.remove());
     const markers: maplibregl.Marker[] = [];
@@ -444,7 +485,7 @@ export default function MapView() {
       });
     });
     viaMarkersRef.current = markers;
-  }, [day]);
+  }, [day, overviewMode]);
 
   // ---- ghost preview marker while dragging a new via point onto the route ----
   useEffect(() => {
@@ -503,12 +544,16 @@ export default function MapView() {
     }
   }, [ready, liveLocation]);
 
-  // ---- fit bounds once per day switch ----
+  // ---- fit bounds once per day switch (or once per entry into overview) ----
   useEffect(() => {
-    if (!ready || !day || !mapRef.current) return;
-    if (fitDayIdRef.current === day.id) return;
-    fitDayIdRef.current = day.id;
-    const points = [day.startPoint, ...day.steps.map((s) => ({ lat: s.lat, lng: s.lng }))];
+    if (!ready || !mapRef.current || daysToRender.length === 0) return;
+    const fitKey = overviewMode ? "__overview__" : day?.id ?? null;
+    if (!fitKey || fitDayIdRef.current === fitKey) return;
+    fitDayIdRef.current = fitKey;
+    const points = daysToRender.flatMap(({ day }) => [
+      day.startPoint,
+      ...day.steps.map((s) => ({ lat: s.lat, lng: s.lng })),
+    ]);
     const bounds = boundsOf(points);
     if (!bounds) return;
     try {
@@ -525,7 +570,7 @@ export default function MapView() {
     } catch {
       // ignore — the map just won't auto-recenter this once
     }
-  }, [ready, day]);
+  }, [ready, day, overviewMode, daysToRender]);
 
   return (
     <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
@@ -562,8 +607,8 @@ export default function MapView() {
         <HiddenGemCreateForm
           point={pendingGemPoint}
           onCancel={() => setPendingGemPoint(null)}
-          onSave={(note, geoLocked) => {
-            useTripStore.getState().addHiddenGem(pendingGemPoint, note, geoLocked);
+          onSave={(note, geoLocked, name) => {
+            useTripStore.getState().addHiddenGem(pendingGemPoint, note, geoLocked, name);
             setPendingGemPoint(null);
           }}
         />
