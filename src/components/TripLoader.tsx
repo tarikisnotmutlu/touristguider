@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTripStore } from "@/store/useTripStore";
 import { fetchTrip, saveTrip } from "@/lib/tripApi";
 import { createDemoTrip } from "@/lib/seed";
-import { rememberTrip } from "@/lib/localTrips";
+import { rememberTrip, saveTripSnapshot, loadTripSnapshot } from "@/lib/localTrips";
 import AppShell from "./AppShell";
 
 const AUTOSAVE_DELAY_MS = 1200;
@@ -29,15 +29,33 @@ export default function TripLoader({ tripId }: { tripId: string }) {
     hydratedRef.current = false;
 
     (async () => {
-      const existing = await fetchTrip(tripId);
+      // fetchTrip can come back null either because the trip genuinely
+      // doesn't exist yet, or because the request itself failed (offline,
+      // Blob hiccup) — either way, prefer whatever's mirrored in
+      // localStorage over silently starting from a blank demo trip.
+      let existing = null;
+      try {
+        existing = await fetchTrip(tripId);
+      } catch {
+        existing = null;
+      }
       if (cancelled) return;
       if (existing) {
         setTrip(existing);
       } else {
-        const fresh = createDemoTrip();
-        fresh.id = tripId;
-        setTrip(fresh);
-        await saveTrip(fresh);
+        const local = loadTripSnapshot(tripId);
+        if (local) {
+          setTrip(local);
+          // Best-effort push back to the server now that we're reading —
+          // if it fails again we're still safely on the local copy.
+          saveTrip(local);
+        } else {
+          const fresh = createDemoTrip();
+          fresh.id = tripId;
+          setTrip(fresh);
+          saveTripSnapshot(fresh);
+          await saveTrip(fresh);
+        }
       }
       if (cancelled) return;
       hydratedRef.current = true;
@@ -52,6 +70,10 @@ export default function TripLoader({ tripId }: { tripId: string }) {
   useEffect(() => {
     if (!hydratedRef.current) return;
     rememberTrip(trip.id, trip.title);
+    // Written synchronously on every change (add a stop, toggle done,
+    // reorder, edit an ETA...) rather than debounced like the network
+    // save — a reload half a second after an edit should never lose it.
+    saveTripSnapshot(trip);
     setSaveState("saving");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {

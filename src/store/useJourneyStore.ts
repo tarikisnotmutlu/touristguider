@@ -66,6 +66,12 @@ interface JourneyState {
   setPanelView: (view: PanelView) => void;
   setSavedDayIndex: (index: number) => void;
 
+  /** Whether the mobile bottom sheet is expanded to its near-full height —
+   *  shared (rather than local component state) so the top HUD can fade
+   *  itself out of the way while the sheet takes over the screen. */
+  sheetExpanded: boolean;
+  setSheetExpanded: (expanded: boolean) => void;
+
   dayStarted: boolean;
   liveLocation: LatLng | null;
   watchId: number | null;
@@ -133,6 +139,9 @@ export const useJourneyStore = create<JourneyState>()(
       savedDayIndex: 0,
       setPanelView: (view) => set({ panelView: view }),
       setSavedDayIndex: (index) => set({ savedDayIndex: index }),
+
+      sheetExpanded: false,
+      setSheetExpanded: (expanded) => set({ sheetExpanded: expanded }),
 
       dayStarted: false,
       liveLocation: null,

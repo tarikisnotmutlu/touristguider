@@ -443,7 +443,12 @@ export default function MapView() {
           }
           useTripStore.getState().setActiveStepId(step.id);
         });
-        return new maplibregl.Marker({ element: el, anchor: "center" })
+        // maplibre-gl's Marker owns its element's opacity internally (it
+        // resets `element.style.opacity` on every render/move tick to
+        // whatever was passed here, or "1" by default) — setting the style
+        // directly on `el` gets silently clobbered, so completed-step
+        // dimming has to go through this option instead.
+        return new maplibregl.Marker({ element: el, anchor: "center", opacity: step.completed ? "0.2" : "1" })
           .setLngLat([step.lng, step.lat])
           .addTo(map);
       })

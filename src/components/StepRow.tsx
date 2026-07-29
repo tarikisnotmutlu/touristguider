@@ -83,13 +83,13 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         </button>
       </div>
 
+      <div ref={setNodeRef} style={dragStyle} className="mb-2 flex w-full flex-row items-center gap-2">
       <motion.div
-        ref={setNodeRef}
-        style={dragStyle}
-        animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.6 : 1 }}
+        animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.3 : 1 }}
         transition={SPRING}
         className={clsx(
-          "mb-2 flex w-full flex-row items-center gap-3 rounded-[20px] border p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
+          "flex w-full flex-1 flex-row items-center gap-3 rounded-[20px] border p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
+          step.completed && "grayscale-[30%]",
           step.id === activeStepId ? "border-sage-300 bg-sage-50/95" : "border-white/60 bg-white/80"
         )}
       >
@@ -164,44 +164,50 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </div>
         )}
 
-        {step.checklist.length > 0 && doneCount < step.checklist.length ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveStepId(step.id);
-            }}
-            type="button"
-            title={`${doneCount}/${step.checklist.length} done — tap to open the checklist`}
-            className="relative flex flex-none shrink-0 cursor-pointer items-center justify-center"
-            style={{ width: RING_SIZE, height: RING_SIZE }}
-          >
-            <ProgressRing ratio={doneCount / step.checklist.length} />
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-stone-600">
-              {doneCount}/{step.checklist.length}
-            </span>
-          </button>
-        ) : (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleStepCompleted(dayId, step.id);
-            }}
-            type="button"
-            title={step.completed ? "Mark as not done" : "Mark as done"}
-            className={clsx(
-              "flex flex-none shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors",
-              step.completed ? "border-sage-600 bg-sage-600" : "border-stone-300 bg-white hover:border-sage-400"
-            )}
-            style={{ width: RING_SIZE, height: RING_SIZE }}
-          >
-            {step.completed && (
-              <svg viewBox="0 0 16 16" className="h-3 w-3 fill-none stroke-white stroke-[2.5]">
-                <path d="M3 8.5L6.2 11.5L13 4.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </button>
-        )}
       </motion.div>
+
+      {/* Outside the motion.div above on purpose — CSS opacity/grayscale on a
+          parent bleeds into its children, and the whole point of dimming a
+          completed card is to still read its done-ness at a glance, so the
+          toggle needs to sit as a true sibling to escape that fade. */}
+      {step.checklist.length > 0 && doneCount < step.checklist.length ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveStepId(step.id);
+          }}
+          type="button"
+          title={`${doneCount}/${step.checklist.length} done — tap to open the checklist`}
+          className="relative flex flex-none shrink-0 cursor-pointer items-center justify-center"
+          style={{ width: RING_SIZE, height: RING_SIZE }}
+        >
+          <ProgressRing ratio={doneCount / step.checklist.length} />
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-stone-600">
+            {doneCount}/{step.checklist.length}
+          </span>
+        </button>
+      ) : (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleStepCompleted(dayId, step.id);
+          }}
+          type="button"
+          title={step.completed ? "Mark as not done" : "Mark as done"}
+          className={clsx(
+            "flex flex-none shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors",
+            step.completed ? "border-sage-600 bg-sage-600" : "border-stone-300 bg-white hover:border-sage-400"
+          )}
+          style={{ width: RING_SIZE, height: RING_SIZE }}
+        >
+          {step.completed && (
+            <svg viewBox="0 0 16 16" className="h-3 w-3 fill-none stroke-white stroke-[2.5]">
+              <path d="M3 8.5L6.2 11.5L13 4.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      )}
+      </div>
     </>
   );
 }

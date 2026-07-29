@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import clsx from "clsx";
 import { useJourneyStore, MEAL_BOOST } from "@/store/useJourneyStore";
 import { vibrate } from "@/lib/haptics";
 
@@ -110,14 +111,18 @@ export default function Hud() {
   const feed = useJourneyStore((s) => s.feed);
   const catsPetted = useJourneyStore((s) => s.catsPetted);
   const petCat = useJourneyStore((s) => s.petCat);
+  const sheetExpanded = useJourneyStore((s) => s.sheetExpanded);
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center pt-4 lg:left-[400px] lg:justify-center">
       <motion.div
         initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={sheetExpanded ? { opacity: 0, y: -20 } : { opacity: 1, y: 0 }}
         transition={SPRING}
-        className="glass-panel pointer-events-auto flex items-center gap-2.5 rounded-full px-3 py-2 shadow-lg"
+        className={clsx(
+          "glass-panel flex items-center gap-2.5 rounded-full px-3 py-2 shadow-lg",
+          sheetExpanded ? "pointer-events-none" : "pointer-events-auto"
+        )}
       >
         <Ring value={fatigue} color={ringColor(fatigue, true)} title="Fatigue">
           {fatigueEmoji(fatigue)}
