@@ -11,6 +11,45 @@ import { CATEGORY_TAG } from "@/lib/categories";
 
 const SPRING = { type: "spring", bounce: 0.15, duration: 0.5 } as const;
 
+const RING_SIZE = 26;
+const RING_STROKE = 2.5;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+/** Apple-Fitness-style progress ring for a step's to-do checklist — an SVG
+ *  track + a stroke-dasharray/dashoffset arc that fills clockwise from 12
+ *  o'clock as items get checked off. Only rendered for the partial (0 <
+ *  done < total) case; a fully-empty or fully-done checklist reuses the
+ *  plain circular toggle's markup instead so those two states look and
+ *  transition identically to the no-checklist fallback. */
+function ProgressRing({ ratio }: { ratio: number }) {
+  const offset = RING_CIRCUMFERENCE * (1 - ratio);
+  return (
+    <svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} className="-rotate-90">
+      <circle
+        cx={RING_SIZE / 2}
+        cy={RING_SIZE / 2}
+        r={RING_RADIUS}
+        fill="none"
+        stroke="#e7e5e4"
+        strokeWidth={RING_STROKE}
+      />
+      <circle
+        cx={RING_SIZE / 2}
+        cy={RING_SIZE / 2}
+        r={RING_RADIUS}
+        fill="none"
+        stroke="var(--color-sage-600)"
+        strokeWidth={RING_STROKE}
+        strokeLinecap="round"
+        strokeDasharray={RING_CIRCUMFERENCE}
+        strokeDashoffset={offset}
+        style={{ transition: "stroke-dashoffset 0.3s ease" }}
+      />
+    </svg>
+  );
+}
+
 /** Renders as 2 direct grid cells (numbered node / card) so it lines up with
  *  CommuteRow's own 2 cells inside Timeline's shared CSS grid. */
 export default function StepRow({ dayId, step, index }: { dayId: string; step: Step; index: number }) {
@@ -93,11 +132,6 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
               {step.arrival && <span className="text-xs font-medium text-stone-500">{step.arrival}</span>}
             </div>
           </div>
-          {step.checklist.length > 0 && (
-            <p className="mt-1 text-[11px] text-stone-500">
-              ✅ {doneCount}/{step.checklist.length}
-            </p>
-          )}
         </div>
 
         {isEditMode && (
@@ -130,24 +164,43 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </div>
         )}
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleStepCompleted(dayId, step.id);
-          }}
-          type="button"
-          title={step.completed ? "Mark as not done" : "Mark as done"}
-          className={clsx(
-            "flex h-6 w-6 flex-none shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors",
-            step.completed ? "border-sage-600 bg-sage-600" : "border-stone-300 bg-white hover:border-sage-400"
-          )}
-        >
-          {step.completed && (
-            <svg viewBox="0 0 16 16" className="h-3 w-3 fill-none stroke-white stroke-[2.5]">
-              <path d="M3 8.5L6.2 11.5L13 4.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </button>
+        {step.checklist.length > 0 && doneCount < step.checklist.length ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveStepId(step.id);
+            }}
+            type="button"
+            title={`${doneCount}/${step.checklist.length} done — tap to open the checklist`}
+            className="relative flex flex-none shrink-0 cursor-pointer items-center justify-center"
+            style={{ width: RING_SIZE, height: RING_SIZE }}
+          >
+            <ProgressRing ratio={doneCount / step.checklist.length} />
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-stone-600">
+              {doneCount}/{step.checklist.length}
+            </span>
+          </button>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleStepCompleted(dayId, step.id);
+            }}
+            type="button"
+            title={step.completed ? "Mark as not done" : "Mark as done"}
+            className={clsx(
+              "flex flex-none shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors",
+              step.completed ? "border-sage-600 bg-sage-600" : "border-stone-300 bg-white hover:border-sage-400"
+            )}
+            style={{ width: RING_SIZE, height: RING_SIZE }}
+          >
+            {step.completed && (
+              <svg viewBox="0 0 16 16" className="h-3 w-3 fill-none stroke-white stroke-[2.5]">
+                <path d="M3 8.5L6.2 11.5L13 4.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+        )}
       </motion.div>
     </>
   );

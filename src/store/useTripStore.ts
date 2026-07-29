@@ -39,6 +39,20 @@ function recalcDay(day: Day) {
   day.steps = recomputeDayTimes(day);
 }
 
+// Marking done now — swap the planned duration for how long the stop
+// actually took (arrival -> now), so every later ETA in the day shifts to
+// reflect real progress instead of the original static schedule.
+function applyCompletionTimeShift(step: Step) {
+  if (!step.arrival) return;
+  const [h, m] = step.arrival.split(":").map(Number);
+  const arrivalToday = new Date();
+  arrivalToday.setHours(h, m, 0, 0);
+  const elapsedMin = Math.round((Date.now() - arrivalToday.getTime()) / 60000);
+  if (elapsedMin >= 1) {
+    step.durationMin = elapsedMin;
+  }
+}
+
 function snapshotTrip(trip: Trip): Trip {
   return JSON.parse(JSON.stringify(trip));
 }
@@ -320,18 +334,7 @@ export const useTripStore = create<TripState>()(
         recordHistory(state);
         const wasCompleted = step.completed;
         step.completed = !wasCompleted;
-        if (!wasCompleted && step.arrival) {
-          // Marking done now — swap the planned duration for how long the stop
-          // actually took (arrival -> now), so every later ETA in the day shifts
-          // to reflect real progress instead of the original static schedule.
-          const [h, m] = step.arrival.split(":").map(Number);
-          const arrivalToday = new Date();
-          arrivalToday.setHours(h, m, 0, 0);
-          const elapsedMin = Math.round((Date.now() - arrivalToday.getTime()) / 60000);
-          if (elapsedMin >= 1) {
-            step.durationMin = elapsedMin;
-          }
-        }
+        if (!wasCompleted) applyCompletionTimeShift(step);
         recalcDay(day);
       }),
 
@@ -340,9 +343,22 @@ export const useTripStore = create<TripState>()(
         const { day } = findDay(state.trip, dayId);
         const step = day?.steps.find((s) => s.id === stepId);
         const item = step?.checklist.find((c) => c.id === itemId);
-        if (!item) return;
+        if (!day || !step || !item) return;
         recordHistory(state);
         item.done = !item.done;
+        // A checklist reaching 100% closes the ring the same way tapping the
+        // master toggle directly would — same ETA-shift math — so ticking
+        // off the last to-do behaves consistently with marking done by hand.
+        if (step.checklist.length > 0) {
+          const allDone = step.checklist.every((c) => c.done);
+          if (allDone && !step.completed) {
+            step.completed = true;
+            applyCompletionTimeShift(step);
+          } else if (!allDone && step.completed) {
+            step.completed = false;
+          }
+          recalcDay(day);
+        }
       }),
 
     addChecklistItem: (dayId, stepId, label) =>

@@ -69,13 +69,22 @@ export default function StepCard() {
             </h4>
             <ul className="flex flex-col gap-1.5">
               {found.step.checklist.map((item) => (
-                <li key={item.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={() => toggleChecklistItem(found!.dayId, found!.step.id, item.id)}
-                    className="accent-sage-600"
-                  />
+                <li key={item.id} className="flex items-center gap-2.5 text-sm">
+                  <button
+                    onClick={() => toggleChecklistItem(found!.dayId, found!.step.id, item.id)}
+                    type="button"
+                    aria-label={item.done ? "Mark as not done" : "Mark as done"}
+                    className={clsx(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+                      item.done ? "border-sage-600 bg-sage-600" : "border-stone-300 bg-white hover:border-sage-400"
+                    )}
+                  >
+                    {item.done && (
+                      <svg viewBox="0 0 16 16" className="h-2.5 w-2.5 fill-none stroke-white stroke-[2.5]">
+                        <path d="M3 8.5L6.2 11.5L13 4.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
                   <span className={item.done ? "flex-1 text-stone-400 line-through" : "flex-1 text-stone-700"}>
                     {item.label}
                   </span>

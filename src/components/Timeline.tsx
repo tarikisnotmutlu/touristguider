@@ -62,7 +62,13 @@ export default function Timeline({ dayId }: { dayId: string }) {
         <div className="mt-3">
           <PlaceSearch placeholder="Add a stop…" onSelect={(place) => addStep(day.id, place)} />
           <AddCustomStopForm onAdd={(name, lat, lng) => addStep(day.id, { name, lat, lng })} />
-          <AddHiddenGemForm onAdd={(point, note, geoLocked, name) => addHiddenGem(point, note, geoLocked, name)} />
+          {/* Hidden Gem creation is desktop-only by design — mobile users
+              should only ever discover gems via geolocation proximity, never
+              plant them, so this is hidden entirely rather than just tucked
+              away (matches MapView's "Drop Hidden Gem" button, also lg-only). */}
+          <div className="hidden lg:block">
+            <AddHiddenGemForm onAdd={(point, note, geoLocked, name) => addHiddenGem(point, note, geoLocked, name)} />
+          </div>
         </div>
       )}
     </div>
