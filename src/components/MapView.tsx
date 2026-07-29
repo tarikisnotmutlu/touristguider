@@ -1,17 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import MapGL, {
-  Marker,
-  Source,
-  Layer,
-  NavigationControl,
-  AttributionControl,
-  type MapRef,
-  type MapLayerMouseEvent,
-  type MapLayerTouchEvent,
-  type ErrorEvent as MapErrorEvent,
-} from "react-map-gl/maplibre";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
@@ -22,25 +12,28 @@ import { fetchRoute } from "@/lib/osrmHttp";
 import { boundsOf, estimateDurationMin, haversineMeters, projectPointOntoPolyline } from "@/lib/geo";
 import { dayColor } from "@/lib/dayColors";
 import {
-  StartMarker,
-  StepMarker,
-  ViaMarker,
-  GhostMarker,
-  GemMarker,
-  LiveLocationMarker,
+  createStepMarkerEl,
+  createStartMarkerEl,
+  createViaMarkerEl,
+  createGhostMarkerEl,
+  createGemMarkerEl,
+  createLiveLocationMarkerEl,
 } from "./MapMarkers";
 import HiddenGemCreateForm from "./HiddenGemCreateForm";
+
+// Istanbul, used only as a fallback center before any trip data has loaded.
+const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
 
 function lineSourceId(dayId: string, segIndex: number) {
   return `route-${dayId}-${segIndex}`;
 }
 
-function toGeoJSONLine(coords: LatLng[], properties: Record<string, string | number>) {
+function toGeoJSONLine(coords: LatLng[], properties: Record<string, string | number>): GeoJSON.Feature<GeoJSON.LineString> {
   return {
-    type: "Feature" as const,
+    type: "Feature",
     properties,
     geometry: {
-      type: "LineString" as const,
+      type: "LineString",
       coordinates: coords.map((p) => [p.lng, p.lat]),
     },
   };
@@ -52,35 +45,49 @@ interface DragState {
 }
 
 export default function MapView() {
-  const mapRef = useRef<MapRef>(null);
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
   const [placingGem, setPlacingGem] = useState(false);
   const [pendingGemPoint, setPendingGemPoint] = useState<LatLng | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [ghostPoint, setGhostPoint] = useState<LatLng | null>(null);
 
+  // Mirrors of state read inside stable (bound-once) map event handlers,
+  // which otherwise close over stale values.
+  const placingGemRef = useRef(placingGem);
+  const dragStateRef = useRef(dragState);
+  const ghostPointRef = useRef(ghostPoint);
+  const hitLayerIdsRef = useRef<string[]>([]);
+
   const fetchKeyRef = useRef(new Map<string, string>());
   const abortRef = useRef(new Map<string, AbortController>());
   const fitDayIdRef = useRef<string | null>(null);
+  const routeSignaturesRef = useRef(new Map<string, string>());
+
+  const startMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const stepMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const viaMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const ghostMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const gemMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const liveMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   const trip = useTripStore((s) => s.trip);
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const activeStepId = useTripStore((s) => s.activeStepId);
-  const setActiveStepId = useTripStore((s) => s.setActiveStepId);
-  const setActiveGemId = useTripStore((s) => s.setActiveGemId);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const day = trip.days[activeDayIndex];
 
-  // ---- gently pan the camera to follow the live location while tracking ----
   useEffect(() => {
-    if (!ready || !liveLocation || !mapRef.current) return;
-    try {
-      mapRef.current.easeTo({ center: [liveLocation.lng, liveLocation.lat], duration: 1200 });
-    } catch {
-      // ignore — same defensive rationale as the fitBounds call below
-    }
-  }, [ready, liveLocation]);
+    placingGemRef.current = placingGem;
+  }, [placingGem]);
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+  useEffect(() => {
+    ghostPointRef.current = ghostPoint;
+  }, [ghostPoint]);
 
   const hitLayerIds = useMemo(() => {
     if (!day) return [];
@@ -89,6 +96,129 @@ export default function MapView() {
       .filter(({ mode }) => mode && ROUTABLE_MODES.includes(mode))
       .map(({ i }) => `${lineSourceId(day.id, i)}-hit`);
   }, [day]);
+  useEffect(() => {
+    hitLayerIdsRef.current = hitLayerIds;
+  }, [hitLayerIds]);
+
+  function commitDragEnd(dragState: DragState, ghostPoint: LatLng) {
+    const state = useTripStore.getState();
+    const targetDay = state.trip.days.find((d) => d.id === dragState.dayId);
+    const route = targetDay?.routes[dragState.segIndex];
+    if (!targetDay || !route) return;
+    const from = pointBefore(targetDay, dragState.segIndex);
+    const to = targetDay.steps[dragState.segIndex];
+    const geometry = route.geometry.length >= 2 ? route.geometry : [from, to];
+    const newFraction = projectPointOntoPolyline(geometry, ghostPoint).fraction;
+
+    let insertAt = route.manualWaypoints.length;
+    for (let i = 0; i < route.manualWaypoints.length; i++) {
+      const f = projectPointOntoPolyline(geometry, route.manualWaypoints[i]).fraction;
+      if (newFraction < f) {
+        insertAt = i;
+        break;
+      }
+    }
+    state.insertManualWaypoint(dragState.dayId, dragState.segIndex, insertAt, ghostPoint);
+  }
+
+  // ---- initialize the raw maplibre-gl map exactly once ----
+  useEffect(() => {
+    if (!mapContainer.current || mapRef.current) return;
+
+    const state = useTripStore.getState();
+    const startDay = state.trip.days[state.activeDayIndex];
+    const center: [number, number] = startDay
+      ? [startDay.startPoint.lng, startDay.startPoint.lat]
+      : FALLBACK_CENTER;
+
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: CARTO_POSITRON_STYLE,
+      center,
+      zoom: 13,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "MapLibre" }), "bottom-right");
+
+    map.on("load", () => setReady(true));
+    map.on("error", (e: maplibregl.ErrorEvent) => {
+      // Surfaces style/tile load failures in the console instead of failing
+      // silently — a blank basemap with no error is much harder to diagnose.
+      console.error("Map error:", e.error);
+    });
+
+    map.on("click", (e: maplibregl.MapMouseEvent) => {
+      if (!placingGemRef.current) return;
+      setPendingGemPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      setPlacingGem(false);
+    });
+
+    function queryHit(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      try {
+        return map.queryRenderedFeatures(e.point, { layers: hitLayerIdsRef.current })[0];
+      } catch {
+        // A hit layer referenced here may not exist yet right after a route
+        // is added — treat that the same as "nothing under the cursor".
+        return undefined;
+      }
+    }
+
+    function beginDrag(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      const hit = queryHit(e);
+      if (!hit) return;
+      e.preventDefault();
+      map.dragPan.disable();
+      setDragState({
+        dayId: String(hit.properties?.dayId),
+        segIndex: Number(hit.properties?.segIndex),
+      });
+      setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+
+    function onMove(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      if (!dragStateRef.current) return;
+      setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+
+    function endDrag() {
+      const currentDragState = dragStateRef.current;
+      const currentGhostPoint = ghostPointRef.current;
+      map.dragPan.enable();
+      if (currentDragState && currentGhostPoint) {
+        commitDragEnd(currentDragState, currentGhostPoint);
+      }
+      setDragState(null);
+      setGhostPoint(null);
+    }
+
+    map.on("mousedown", beginDrag);
+    map.on("touchstart", beginDrag);
+    map.on("mousemove", onMove);
+    map.on("touchmove", onMove);
+    map.on("mouseup", endDrag);
+    map.on("touchend", endDrag);
+
+    return () => {
+      startMarkerRef.current?.remove();
+      stepMarkersRef.current.forEach((m) => m.remove());
+      viaMarkersRef.current.forEach((m) => m.remove());
+      ghostMarkerRef.current?.remove();
+      gemMarkersRef.current.forEach((m) => m.remove());
+      liveMarkerRef.current?.remove();
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // ---- cursor feedback for the current interaction mode ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = placingGem ? "crosshair" : dragState ? "grabbing" : "";
+  }, [placingGem, dragState]);
 
   // ---- fetch/refresh route geometry for each segment as needed ----
   useEffect(() => {
@@ -135,6 +265,201 @@ export default function MapView() {
     });
   }, [day]);
 
+  // ---- sync route line sources/layers onto the map ----
+  // (gated on isStyleLoaded()/'styledata' below, not on the React `ready`
+  // flag — that only flips on the 'load' event, which needs a render frame
+  // and can lag well behind the style actually being parsed and queryable)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !day) return;
+
+    function applyRoutes() {
+      if (!map || !day) return;
+      const desiredIds = new Set<string>();
+
+      day.steps.forEach((step, i) => {
+        const route = day.routes[i];
+        const from = pointBefore(day, i);
+        const to: LatLng = { lat: step.lat, lng: step.lng };
+        const srcId = lineSourceId(day.id, i);
+        desiredIds.add(srcId);
+
+        const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
+        const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i });
+        const color = dayColor(activeDayIndex);
+        const routable = ROUTABLE_MODES.includes(route.mode);
+        const signature = route.mode;
+
+        const existingSource = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
+        if (existingSource && routeSignaturesRef.current.get(srcId) === signature) {
+          existingSource.setData(geojson);
+          if (map.getLayer(`${srcId}-line`)) {
+            map.setPaintProperty(`${srcId}-line`, "line-color", color);
+          }
+          return;
+        }
+
+        if (map.getLayer(`${srcId}-hit`)) map.removeLayer(`${srcId}-hit`);
+        if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
+        if (map.getSource(srcId)) map.removeSource(srcId);
+
+        map.addSource(srcId, { type: "geojson", data: geojson });
+        map.addLayer({
+          id: `${srcId}-line`,
+          type: "line",
+          source: srcId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-color": color,
+            "line-width": 5,
+            "line-opacity": 0.85,
+            ...(routable ? {} : { "line-dasharray": [1, 2] }),
+          },
+        });
+        if (routable) {
+          map.addLayer({
+            id: `${srcId}-hit`,
+            type: "line",
+            source: srcId,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#000", "line-width": 24, "line-opacity": 0 },
+          });
+        }
+        routeSignaturesRef.current.set(srcId, signature);
+      });
+
+      for (const [id] of routeSignaturesRef.current) {
+        if (!desiredIds.has(id)) {
+          if (map.getLayer(`${id}-hit`)) map.removeLayer(`${id}-hit`);
+          if (map.getLayer(`${id}-line`)) map.removeLayer(`${id}-line`);
+          if (map.getSource(id)) map.removeSource(id);
+          routeSignaturesRef.current.delete(id);
+        }
+      }
+    }
+
+    if (map.isStyleLoaded()) applyRoutes();
+    else map.once("styledata", applyRoutes);
+  }, [day, activeDayIndex]);
+
+  // ---- start marker ----
+  // Markers don't need the style to be loaded — they're positioned via the
+  // map's projection, which is available as soon as the Map is constructed —
+  // so this (like the marker effects below) only gates on the map existing.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !day) return;
+    if (!startMarkerRef.current) {
+      startMarkerRef.current = new maplibregl.Marker({ element: createStartMarkerEl(), anchor: "center" });
+    }
+    startMarkerRef.current.setLngLat([day.startPoint.lng, day.startPoint.lat]).addTo(map);
+  }, [day]);
+
+  // ---- step markers (rebuilt on step list changes or active-step change) ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !day) return;
+
+    stepMarkersRef.current.forEach((m) => m.remove());
+    stepMarkersRef.current = day.steps.map((step, i) => {
+      const el = createStepMarkerEl(i + 1, step.category, step.id === activeStepId);
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        useTripStore.getState().setActiveStepId(step.id);
+      });
+      return new maplibregl.Marker({ element: el, anchor: "center" })
+        .setLngLat([step.lng, step.lat])
+        .addTo(map);
+    });
+  }, [day, activeStepId]);
+
+  // ---- draggable manual-waypoint ("via") markers ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !day) return;
+
+    viaMarkersRef.current.forEach((m) => m.remove());
+    const markers: maplibregl.Marker[] = [];
+    day.steps.forEach((step, i) => {
+      const route = day.routes[i];
+      route.manualWaypoints.forEach((wp, viaIndex) => {
+        const el = createViaMarkerEl();
+        el.addEventListener("dblclick", (ev) => {
+          ev.stopPropagation();
+          useTripStore.getState().removeManualWaypoint(day.id, i, viaIndex);
+        });
+        const marker = new maplibregl.Marker({ element: el, anchor: "center", draggable: true })
+          .setLngLat([wp.lng, wp.lat])
+          .addTo(map);
+        marker.on("dragend", () => {
+          const lngLat = marker.getLngLat();
+          useTripStore
+            .getState()
+            .updateManualWaypoint(day.id, i, viaIndex, { lat: lngLat.lat, lng: lngLat.lng });
+        });
+        markers.push(marker);
+      });
+    });
+    viaMarkersRef.current = markers;
+  }, [day]);
+
+  // ---- ghost preview marker while dragging a new via point onto the route ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!ghostPoint) {
+      ghostMarkerRef.current?.remove();
+      ghostMarkerRef.current = null;
+      return;
+    }
+    if (!ghostMarkerRef.current) {
+      ghostMarkerRef.current = new maplibregl.Marker({ element: createGhostMarkerEl(), anchor: "center" });
+    }
+    ghostMarkerRef.current.setLngLat([ghostPoint.lng, ghostPoint.lat]).addTo(map);
+  }, [ghostPoint]);
+
+  // ---- hidden gem markers ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    gemMarkersRef.current.forEach((m) => m.remove());
+    gemMarkersRef.current = trip.hiddenGems.map((gem) => {
+      const el = createGemMarkerEl();
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        useTripStore.getState().setActiveGemId(gem.id);
+      });
+      return new maplibregl.Marker({ element: el, anchor: "center" })
+        .setLngLat([gem.lng, gem.lat])
+        .addTo(map);
+    });
+  }, [trip.hiddenGems]);
+
+  // ---- live location marker ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!liveLocation) {
+      liveMarkerRef.current?.remove();
+      liveMarkerRef.current = null;
+      return;
+    }
+    if (!liveMarkerRef.current) {
+      liveMarkerRef.current = new maplibregl.Marker({ element: createLiveLocationMarkerEl(), anchor: "center" });
+    }
+    liveMarkerRef.current.setLngLat([liveLocation.lng, liveLocation.lat]).addTo(map);
+  }, [liveLocation]);
+
+  // ---- gently pan the camera to follow the live location while tracking ----
+  useEffect(() => {
+    if (!ready || !liveLocation || !mapRef.current) return;
+    try {
+      mapRef.current.easeTo({ center: [liveLocation.lng, liveLocation.lat], duration: 1200 });
+    } catch {
+      // ignore — same defensive rationale as the fitBounds call below
+    }
+  }, [ready, liveLocation]);
+
   // ---- fit bounds once per day switch ----
   useEffect(() => {
     if (!ready || !day || !mapRef.current) return;
@@ -159,205 +484,18 @@ export default function MapView() {
     }
   }, [ready, day]);
 
-  function beginDrag(e: MapLayerMouseEvent | MapLayerTouchEvent) {
-    const hit = e.features?.[0];
-    if (!hit) return;
-    e.preventDefault();
-    mapRef.current?.getMap().dragPan.disable();
-    setDragState({
-      dayId: String(hit.properties?.dayId),
-      segIndex: Number(hit.properties?.segIndex),
-    });
-    setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-  }
-
-  function onMove(e: MapLayerMouseEvent | MapLayerTouchEvent) {
-    if (!dragState) return;
-    setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-  }
-
-  function endDrag() {
-    if (!dragState || !ghostPoint) {
-      setDragState(null);
-      setGhostPoint(null);
-      return;
-    }
-    mapRef.current?.getMap().dragPan.enable();
-
-    const state = useTripStore.getState();
-    const targetDay = state.trip.days.find((d) => d.id === dragState.dayId);
-    const route = targetDay?.routes[dragState.segIndex];
-    if (targetDay && route) {
-      const from = pointBefore(targetDay, dragState.segIndex);
-      const to = targetDay.steps[dragState.segIndex];
-      const geometry = route.geometry.length >= 2 ? route.geometry : [from, to];
-      const newFraction = projectPointOntoPolyline(geometry, ghostPoint).fraction;
-
-      let insertAt = route.manualWaypoints.length;
-      for (let i = 0; i < route.manualWaypoints.length; i++) {
-        const f = projectPointOntoPolyline(geometry, route.manualWaypoints[i]).fraction;
-        if (newFraction < f) {
-          insertAt = i;
-          break;
-        }
-      }
-      state.insertManualWaypoint(dragState.dayId, dragState.segIndex, insertAt, ghostPoint);
-    }
-    setDragState(null);
-    setGhostPoint(null);
-  }
-
-  function handleMapClick(e: MapLayerMouseEvent) {
-    if (!placingGem) return;
-    setPendingGemPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-    setPlacingGem(false);
-  }
-
-  function handleMapError(e: MapErrorEvent) {
-    // Surfaces style/tile load failures in the console instead of failing
-    // silently — a blank basemap with no error is much harder to diagnose.
-    console.error("Map error:", e.error);
-  }
-
-  if (!day) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400">
-        No day selected
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
-      <MapGL
-        ref={mapRef}
-        mapStyle={CARTO_POSITRON_STYLE}
-        initialViewState={{ longitude: day.startPoint.lng, latitude: day.startPoint.lat, zoom: 13 }}
-        attributionControl={false}
-        interactiveLayerIds={hitLayerIds}
-        cursor={placingGem ? "crosshair" : dragState ? "grabbing" : undefined}
-        onLoad={() => setReady(true)}
-        onError={handleMapError}
-        onClick={handleMapClick}
-        onMouseDown={beginDrag}
-        onTouchStart={beginDrag}
-        onMouseMove={onMove}
-        onTouchMove={onMove}
-        onMouseUp={endDrag}
-        onTouchEnd={endDrag}
-        style={{ width: "100vw", height: "100vh" }}
-      >
-        <NavigationControl position="bottom-right" showCompass={false} />
-        <AttributionControl position="bottom-right" compact customAttribution="MapLibre" />
+      <div
+        ref={mapContainer}
+        className="absolute inset-0 sepia-[.15] hue-rotate-[65deg] saturate-[0.8] contrast-[0.9]"
+      />
 
-        <Marker longitude={day.startPoint.lng} latitude={day.startPoint.lat} anchor="center">
-          <StartMarker />
-        </Marker>
-
-        {day.steps.map((step, i) => {
-          const route = day.routes[i];
-          const from = pointBefore(day, i);
-          const to: LatLng = { lat: step.lat, lng: step.lng };
-          const srcId = lineSourceId(day.id, i);
-          const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
-          const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i });
-          const color = dayColor(activeDayIndex);
-          const routable = ROUTABLE_MODES.includes(route.mode);
-
-          return (
-            <Source key={srcId} id={srcId} type="geojson" data={geojson}>
-              <Layer
-                id={`${srcId}-line`}
-                type="line"
-                layout={{ "line-cap": "round", "line-join": "round" }}
-                paint={{
-                  "line-color": color,
-                  "line-width": 5,
-                  "line-opacity": 0.85,
-                  ...(routable ? {} : { "line-dasharray": [1, 2] }),
-                }}
-              />
-              {routable && (
-                <Layer
-                  id={`${srcId}-hit`}
-                  type="line"
-                  layout={{ "line-cap": "round", "line-join": "round" }}
-                  paint={{ "line-color": "#000", "line-width": 24, "line-opacity": 0 }}
-                />
-              )}
-            </Source>
-          );
-        })}
-
-        {day.steps.map((step, i) => {
-          const route = day.routes[i];
-          return route.manualWaypoints.map((wp, viaIndex) => (
-            <Marker
-              key={`${step.id}-via-${viaIndex}`}
-              longitude={wp.lng}
-              latitude={wp.lat}
-              anchor="center"
-              draggable
-              onDragEnd={(e) =>
-                useTripStore
-                  .getState()
-                  .updateManualWaypoint(day.id, i, viaIndex, { lat: e.lngLat.lat, lng: e.lngLat.lng })
-              }
-            >
-              <div
-                onDoubleClick={(ev) => {
-                  ev.stopPropagation();
-                  useTripStore.getState().removeManualWaypoint(day.id, i, viaIndex);
-                }}
-              >
-                <ViaMarker />
-              </div>
-            </Marker>
-          ));
-        })}
-
-        {ghostPoint && (
-          <Marker longitude={ghostPoint.lng} latitude={ghostPoint.lat} anchor="center">
-            <GhostMarker />
-          </Marker>
-        )}
-
-        {day.steps.map((step, i) => (
-          <Marker
-            key={step.id}
-            longitude={step.lng}
-            latitude={step.lat}
-            anchor="center"
-            onClick={(e) => {
-              e.originalEvent.stopPropagation();
-              setActiveStepId(step.id);
-            }}
-          >
-            <StepMarker index={i + 1} category={step.category} active={step.id === activeStepId} />
-          </Marker>
-        ))}
-
-        {trip.hiddenGems.map((gem) => (
-          <Marker
-            key={gem.id}
-            longitude={gem.lng}
-            latitude={gem.lat}
-            anchor="center"
-            onClick={(e) => {
-              e.originalEvent.stopPropagation();
-              setActiveGemId(gem.id);
-            }}
-          >
-            <GemMarker />
-          </Marker>
-        ))}
-
-        {liveLocation && (
-          <Marker longitude={liveLocation.lng} latitude={liveLocation.lat} anchor="center">
-            <LiveLocationMarker />
-          </Marker>
-        )}
-      </MapGL>
+      {!day && (
+        <div className="absolute inset-0 flex items-center justify-center bg-stone-100 text-stone-400">
+          No day selected
+        </div>
+      )}
 
       {/* Desktop-only, edit-mode-only "creator mode" control for dropping a
           Hidden Gem pin. Positioned top-right (below the zoom control) rather
