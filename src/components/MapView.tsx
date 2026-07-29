@@ -24,6 +24,23 @@ import HiddenGemCreateForm from "./HiddenGemCreateForm";
 // Istanbul, used only as a fallback center before any trip data has loaded.
 const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
 
+// MapLibre spins up its tile-parsing worker via `new Worker(new URL(...,
+// import.meta.url))` inside its own bundled module — Turbopack doesn't
+// resolve that import.meta.url to a real http(s) URL, so the default
+// worker script ends up empty and the worker silently fails to parse (no
+// basemap tiles or route lines ever render, though DOM markers are
+// unaffected since they don't touch the worker at all). Pointing it at a
+// copy of the same package's worker file served from /public sidesteps
+// that resolution entirely. The worker file itself imports a sibling
+// maplibre-gl-shared.mjs (relative to its own URL), so that has to be
+// copied alongside it. Both must be re-copied from
+// node_modules/maplibre-gl/dist/ if maplibre-gl is upgraded:
+//   cp node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs public/
+//   cp node_modules/maplibre-gl/dist/maplibre-gl-shared.mjs public/
+if (typeof window !== "undefined") {
+  maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
+}
+
 function lineSourceId(dayId: string, segIndex: number) {
   return `route-${dayId}-${segIndex}`;
 }
