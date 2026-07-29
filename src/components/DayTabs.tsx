@@ -39,6 +39,8 @@ export default function DayTabs() {
   const days = useTripStore((s) => s.trip.days);
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const setActiveDayIndex = useTripStore((s) => s.setActiveDayIndex);
+  const addDay = useTripStore((s) => s.addDay);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
   const panelView = useJourneyStore((s) => s.panelView);
   const setPanelView = useJourneyStore((s) => s.setPanelView);
   const setSavedDayIndex = useJourneyStore((s) => s.setSavedDayIndex);
@@ -49,8 +51,14 @@ export default function DayTabs() {
     setSavedDayIndex(i);
   }
 
+  function handleAddDay() {
+    addDay();
+    setPanelView("day");
+    setSavedDayIndex(days.length);
+  }
+
   return (
-    <div className="flex gap-1.5 overflow-x-auto px-3 py-2.5">
+    <div className="flex items-center gap-1.5 overflow-x-auto px-3 py-2.5">
       <TabPill active={panelView === "overview"} onClick={() => setPanelView("overview")}>
         Overview
       </TabPill>
@@ -59,6 +67,16 @@ export default function DayTabs() {
           {day.label}
         </TabPill>
       ))}
+      {isEditMode && (
+        <button
+          onClick={handleAddDay}
+          type="button"
+          title="Add a day"
+          className="shrink-0 rounded-full border border-dashed border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-400 transition-colors hover:border-sage-400 hover:text-sage-700"
+        >
+          + Add Day
+        </button>
+      )}
       <TabPill active={panelView === "unplanned"} onClick={() => setPanelView("unplanned")}>
         Unplanned
       </TabPill>

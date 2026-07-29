@@ -519,8 +519,8 @@ export default function MapView() {
         <HiddenGemCreateForm
           point={pendingGemPoint}
           onCancel={() => setPendingGemPoint(null)}
-          onSave={(note) => {
-            useTripStore.getState().addHiddenGem(pendingGemPoint, note);
+          onSave={(note, geoLocked) => {
+            useTripStore.getState().addHiddenGem(pendingGemPoint, note, geoLocked);
             setPendingGemPoint(null);
           }}
         />

@@ -55,8 +55,8 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.6 : 1 }}
         transition={SPRING}
         className={clsx(
-          "mb-2 flex items-center gap-2 rounded-2xl border bg-white p-2.5 shadow-sm transition-colors",
-          step.id === activeStepId ? "border-sage-300 bg-sage-50" : "border-stone-200"
+          "mb-2 flex items-center gap-2.5 rounded-2xl border p-4 shadow-[0_4px_16px_rgba(0,0,0,0.03)] backdrop-blur-md transition-shadow hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]",
+          step.id === activeStepId ? "border-sage-300 bg-sage-50/95" : "border-stone-200/60 bg-white/95"
         )}
       >
         {isEditMode && (
@@ -71,21 +71,26 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </button>
         )}
 
-        <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setActiveStepId(step.id)}>
-          <p
-            className={clsx(
-              "truncate text-sm font-bold tracking-tight text-stone-800 transition-all",
-              step.completed && "text-stone-400 line-through decoration-stone-300"
-            )}
-          >
-            {step.name}
-          </p>
-          <span
-            className={clsx(
-              "mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium",
-              tag.className
-            )}
-          >
+        <div className="min-w-0 flex-1" onClick={() => !isEditMode && setActiveStepId(step.id)}>
+          {isEditMode ? (
+            <input
+              value={step.name}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => updateStep(dayId, step.id, { name: e.target.value })}
+              className="w-full truncate rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-900 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
+            />
+          ) : (
+            <p
+              className={clsx(
+                "cursor-pointer truncate text-[17px] font-semibold tracking-tight text-stone-900 transition-all",
+                step.completed && "text-stone-400 line-through decoration-stone-300"
+              )}
+              onClick={() => setActiveStepId(step.id)}
+            >
+              {step.name}
+            </p>
+          )}
+          <span className="mt-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
             {tag.text}
           </span>
           {step.checklist.length > 0 && (
@@ -116,10 +121,11 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
                 e.stopPropagation();
                 removeStep(dayId, step.id);
               }}
-              className="text-[11px] text-stone-400 hover:text-terracotta-600"
+              title="Delete stop"
+              className="text-sm text-stone-300 hover:text-terracotta-600"
               type="button"
             >
-              remove
+              🗑️
             </button>
           </div>
         )}

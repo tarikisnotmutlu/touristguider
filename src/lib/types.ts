@@ -69,6 +69,9 @@ export interface HiddenGem {
   lng: number;
   note: string;
   createdAt: number;
+  /** When true (the default), the reveal only happens once the visitor is
+   *  physically within range — a scavenger-hunt pin rather than a plain one. */
+  geoLocked: boolean;
 }
 
 /** A saved place with no day/time slot yet — lives in the "Unplanned" tab

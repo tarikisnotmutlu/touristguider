@@ -9,6 +9,7 @@ import HiddenGemModal from "./HiddenGemModal";
 import JourneyEngine from "./JourneyEngine";
 import Hud from "./Hud";
 import CatToast from "./CatToast";
+import GemHintToast from "./GemHintToast";
 import ArrivalCelebration from "./ArrivalCelebration";
 
 // maplibre-gl needs `window`, so the whole map tree is client-only and loaded
@@ -31,6 +32,7 @@ export default function AppShell() {
       <MobileSheet />
       <Hud />
       <CatToast />
+      <GemHintToast />
       <StepCard />
       <HiddenGemModal />
       <ArrivalCelebration />

@@ -55,6 +55,7 @@ interface TripState {
   future: Trip[];
 
   setTrip: (trip: Trip) => void;
+  setTripTitle: (title: string) => void;
   setActiveDayIndex: (index: number) => void;
   setActiveStepId: (id: string | null) => void;
   setActiveGemId: (id: string | null) => void;
@@ -62,6 +63,9 @@ interface TripState {
 
   undo: () => void;
   redo: () => void;
+
+  addDay: () => void;
+  removeDay: (dayId: string) => void;
 
   setDayStartTime: (dayId: string, value: string) => void;
   setDayStartPoint: (dayId: string, point: { name: string; lat: number; lng: number }) => void;
@@ -105,7 +109,7 @@ interface TripState {
   removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
   resetRouteToAuto: (dayId: string, segIndex: number) => void;
 
-  addHiddenGem: (point: LatLng, note: string) => void;
+  addHiddenGem: (point: LatLng, note: string, geoLocked: boolean) => void;
   removeHiddenGem: (id: string) => void;
 
   addUnplannedPlace: (place: {
@@ -155,6 +159,12 @@ export const useTripStore = create<TripState>()(
         state.saveState = saveState;
       }),
 
+    setTripTitle: (title) =>
+      set((state) => {
+        recordHistory(state);
+        state.trip.title = title;
+      }),
+
     setActiveDayIndex: (index) =>
       set((state) => {
         state.activeDayIndex = index;
@@ -190,6 +200,34 @@ export const useTripStore = create<TripState>()(
         if (state.past.length > HISTORY_LIMIT) state.past.shift();
         state.trip = next;
         state.activeDayIndex = Math.min(state.activeDayIndex, Math.max(0, state.trip.days.length - 1));
+        state.activeStepId = null;
+      }),
+
+    addDay: () =>
+      set((state) => {
+        recordHistory(state);
+        const n = state.trip.days.length + 1;
+        const lastDay = state.trip.days[state.trip.days.length - 1];
+        state.trip.days.push({
+          id: genId(),
+          label: `Day ${n}`,
+          startTime: "09:00",
+          startPoint: lastDay ? lastDay.startPoint : { name: "Meeting point", lat: 41.0082, lng: 28.9784 },
+          steps: [],
+          routes: [],
+        });
+        state.activeDayIndex = state.trip.days.length - 1;
+        state.activeStepId = null;
+      }),
+
+    removeDay: (dayId) =>
+      set((state) => {
+        if (state.trip.days.length <= 1) return;
+        const idx = state.trip.days.findIndex((d) => d.id === dayId);
+        if (idx === -1) return;
+        recordHistory(state);
+        state.trip.days.splice(idx, 1);
+        state.activeDayIndex = Math.min(state.activeDayIndex, state.trip.days.length - 1);
         state.activeStepId = null;
       }),
 
@@ -388,7 +426,7 @@ export const useTripStore = create<TripState>()(
         recalcDay(day);
       }),
 
-    addHiddenGem: (point, note) =>
+    addHiddenGem: (point, note, geoLocked) =>
       set((state) => {
         recordHistory(state);
         state.trip.hiddenGems.push({
@@ -397,6 +435,7 @@ export const useTripStore = create<TripState>()(
           lng: point.lng,
           note: note.trim(),
           createdAt: Date.now(),
+          geoLocked,
         });
       }),
 

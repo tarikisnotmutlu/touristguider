@@ -25,10 +25,13 @@ const safeStorage = {
   },
 };
 
-// Full-to-empty over these many seconds — tuned to be noticeable within a demo
-// session rather than a literal real-world day.
-const HUNGER_DECAY_PER_SEC = 100 / (20 * 60);
-const THIRST_DECAY_PER_SEC = 100 / (12 * 60);
+// Thirst empties in exactly 1 hour, hunger in exactly 4 — real-world-paced
+// rather than the earlier demo-session-paced rates, per-minute since the
+// depletion tick now runs once a minute (see JourneyEngine, which also owns
+// the walking-speed multiplier — this store just applies whatever it passes in).
+const THIRST_DECAY_PER_MIN = 100 / 60;
+const HUNGER_DECAY_PER_MIN = 100 / 240;
+
 const FATIGUE_RECOVERY_PER_SEC = 100 / 90;
 const WATER_BOOST = 30;
 const MEAL_BOOST = 40;
@@ -36,9 +39,16 @@ const MEAL_BOOST = 40;
  *  fatigue without instantly maxing the bar out on the first stop. */
 const FATIGUE_PER_METER = (1.3 / 1000) * 6;
 
+const clampPercent = (v: number) => Math.max(0, Math.min(100, v));
+
 export interface ArrivalInfo {
   stepId: string;
   stepName: string;
+}
+
+export interface UnlockedGemInfo {
+  id: string;
+  note: string;
 }
 
 export type PanelView = "overview" | "unplanned" | "day";
@@ -70,8 +80,15 @@ interface JourneyState {
   addFatigue: (amount: number) => void;
   feed: (amount: number) => void;
   drinkWater: () => void;
-  tickDecay: (seconds: number) => void;
   tickRecovery: (seconds: number) => void;
+  /** Runs once a minute from JourneyEngine — `multiplier` is
+   *  WALK_DECAY_MULTIPLIER when the visitor has been walking that minute,
+   *  1 otherwise (or when back-filling elapsed offline time). */
+  tickMinuteDecay: (minutes: number, multiplier: number) => void;
+  /** Timestamp (ms) hunger/thirst/fatigue were last touched — persisted so a
+   *  reload can back-fill however much time passed while the app was closed. */
+  lastUpdatedTimestamp: number | null;
+  applyOfflineDecay: () => void;
 
   restingStepId: string | null;
   setRestingStepId: (id: string | null) => void;
@@ -90,6 +107,18 @@ interface JourneyState {
    *  on a timer in JourneyEngine — cat count is deliberately untouched. */
   lastResetDate: string | null;
   checkMidnightReset: () => void;
+
+  /** Hidden gems the visitor has physically unlocked at least once — a
+   *  geo-locked gem only shows its full reveal modal the first time. */
+  discoveredGemIds: string[];
+  unlockedGem: UnlockedGemInfo | null;
+  triggerGemUnlock: (id: string, note: string) => void;
+  clearGemUnlock: () => void;
+
+  /** Brief "get closer" toast when a still-locked gem is tapped from afar. */
+  gemHintVisible: boolean;
+  showGemHint: () => void;
+  clearGemHint: () => void;
 }
 
 export const CAT_MILESTONES = [1, 5, 10, 25, 50];
@@ -122,18 +151,32 @@ export const useJourneyStore = create<JourneyState>()(
       fatigue: 0,
       hunger: 100,
       thirst: 100,
-      addFatigue: (amount) => set((s) => ({ fatigue: Math.min(100, Math.max(0, s.fatigue + amount)) })),
-      feed: (amount) => set((s) => ({ hunger: Math.min(100, s.hunger + amount) })),
-      drinkWater: () => {
-        set((s) => ({ thirst: Math.min(100, s.thirst + WATER_BOOST) }));
-      },
-      tickDecay: (seconds) =>
-        set((s) => ({
-          hunger: Math.max(0, s.hunger - HUNGER_DECAY_PER_SEC * seconds),
-          thirst: Math.max(0, s.thirst - THIRST_DECAY_PER_SEC * seconds),
-        })),
+      addFatigue: (amount) => set((s) => ({ fatigue: clampPercent(s.fatigue + amount) })),
+      feed: (amount) =>
+        set((s) => ({ hunger: clampPercent(s.hunger + amount), lastUpdatedTimestamp: Date.now() })),
+      drinkWater: () =>
+        set((s) => ({ thirst: clampPercent(s.thirst + WATER_BOOST), lastUpdatedTimestamp: Date.now() })),
       tickRecovery: (seconds) =>
         set((s) => ({ fatigue: Math.max(0, s.fatigue - FATIGUE_RECOVERY_PER_SEC * seconds) })),
+      tickMinuteDecay: (minutes, multiplier) =>
+        set((s) => ({
+          hunger: clampPercent(s.hunger - HUNGER_DECAY_PER_MIN * minutes * multiplier),
+          thirst: clampPercent(s.thirst - THIRST_DECAY_PER_MIN * minutes * multiplier),
+          lastUpdatedTimestamp: Date.now(),
+        })),
+      lastUpdatedTimestamp: null,
+      applyOfflineDecay: () => {
+        const last = get().lastUpdatedTimestamp;
+        if (last == null) {
+          set({ lastUpdatedTimestamp: Date.now() });
+          return;
+        }
+        const elapsedMinutes = (Date.now() - last) / 60000;
+        if (elapsedMinutes <= 0) return;
+        // Offline time is a flat rate — we have no location history for
+        // while the app was closed, so no walking multiplier applies.
+        get().tickMinuteDecay(elapsedMinutes, 1);
+      },
 
       restingStepId: null,
       setRestingStepId: (id) => set({ restingStepId: id }),
@@ -164,9 +207,31 @@ export const useJourneyStore = create<JourneyState>()(
         const today = istanbulDateString();
         set((s) => {
           if (s.lastResetDate === today) return {};
-          return { fatigue: 0, hunger: 100, thirst: 100, lastResetDate: today };
+          return {
+            fatigue: 0,
+            hunger: 100,
+            thirst: 100,
+            lastResetDate: today,
+            // Reset "consumes" the elapsed time so applyOfflineDecay (which
+            // runs right after this in JourneyEngine) doesn't immediately
+            // re-deplete the freshly-reset stats for the same gap.
+            lastUpdatedTimestamp: Date.now(),
+          };
         });
       },
+
+      discoveredGemIds: [],
+      unlockedGem: null,
+      triggerGemUnlock: (id, note) =>
+        set((s) => {
+          if (s.discoveredGemIds.includes(id)) return {};
+          return { unlockedGem: { id, note }, discoveredGemIds: [...s.discoveredGemIds, id] };
+        }),
+      clearGemUnlock: () => set({ unlockedGem: null }),
+
+      gemHintVisible: false,
+      showGemHint: () => set({ gemHintVisible: true }),
+      clearGemHint: () => set({ gemHintVisible: false }),
     }),
     {
       name: "touristguider-journey",
@@ -175,9 +240,9 @@ export const useJourneyStore = create<JourneyState>()(
       // first client render matches the server's — otherwise a friend who
       // already has progress saved would see a React hydration mismatch.
       skipHydration: true,
-      // liveLocation/watchId/arrival/isEditMode are intentionally excluded —
-      // location and the "just arrived" celebration should always start
-      // fresh on reload, and View Mode should always be the default.
+      // liveLocation/watchId/arrival/isEditMode/unlockedGem/gemHintVisible are
+      // intentionally excluded — location and "just happened" reveals should
+      // always start fresh on reload, and View Mode should always default on.
       partialize: (s) => ({
         dayStarted: s.dayStarted,
         fatigue: s.fatigue,
@@ -189,6 +254,8 @@ export const useJourneyStore = create<JourneyState>()(
         panelView: s.panelView,
         savedDayIndex: s.savedDayIndex,
         lastResetDate: s.lastResetDate,
+        lastUpdatedTimestamp: s.lastUpdatedTimestamp,
+        discoveredGemIds: s.discoveredGemIds,
       }),
     }
   )

@@ -9,6 +9,7 @@ import { useJourneyStore } from "@/store/useJourneyStore";
 import CommuteRow from "./CommuteRow";
 import StepRow from "./StepRow";
 import PlaceSearch from "./PlaceSearch";
+import AddCustomStopForm from "./AddCustomStopForm";
 
 export default function Timeline({ dayId }: { dayId: string }) {
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
@@ -58,6 +59,7 @@ export default function Timeline({ dayId }: { dayId: string }) {
       {isEditMode && (
         <div className="mt-3">
           <PlaceSearch placeholder="Add a stop…" onSelect={(place) => addStep(day.id, place)} />
+          <AddCustomStopForm onAdd={(name, lat, lng) => addStep(day.id, { name, lat, lng })} />
         </div>
       )}
     </div>

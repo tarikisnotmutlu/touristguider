@@ -23,11 +23,20 @@ export default function PanelContent() {
   const trip = useTripStore((s) => s.trip);
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const saveState = useTripStore((s) => s.saveState);
+  const setTripTitle = useTripStore((s) => s.setTripTitle);
+  const removeDay = useTripStore((s) => s.removeDay);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const panelView = useJourneyStore((s) => s.panelView);
+  const setSavedDayIndex = useJourneyStore((s) => s.setSavedDayIndex);
   const day = trip.days[activeDayIndex];
 
   const spotCount = trip.days.reduce((sum, d) => sum + d.steps.length, 0);
+
+  function handleDeleteDay() {
+    if (!day || trip.days.length <= 1) return;
+    removeDay(day.id);
+    setSavedDayIndex(useTripStore.getState().activeDayIndex);
+  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -45,7 +54,15 @@ export default function PanelContent() {
 
       {/* Destination card: title + subtitle, Wanderlog-style. */}
       <div className="flex shrink-0 flex-col gap-0.5 border-b border-stone-200/70 px-3 pb-3 pt-2">
-        <h1 className="truncate text-base font-bold tracking-tight text-stone-800">{trip.title}</h1>
+        {isEditMode ? (
+          <input
+            value={trip.title}
+            onChange={(e) => setTripTitle(e.target.value)}
+            className="truncate rounded-lg border border-transparent bg-transparent text-base font-bold tracking-tight text-stone-800 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
+          />
+        ) : (
+          <h1 className="truncate text-base font-bold tracking-tight text-stone-800">{trip.title}</h1>
+        )}
         <p className="text-xs text-stone-400">
           {trip.days.length} {trip.days.length === 1 ? "day" : "days"} • {spotCount}{" "}
           {spotCount === 1 ? "spot" : "spots"}
@@ -72,6 +89,17 @@ export default function PanelContent() {
         <>
           <div className="shrink-0">
             <DayStartEditor dayId={day.id} />
+            {isEditMode && trip.days.length > 1 && (
+              <div className="flex justify-end px-3 pb-1">
+                <button
+                  onClick={handleDeleteDay}
+                  type="button"
+                  className="text-[11px] font-medium text-stone-400 hover:text-terracotta-600"
+                >
+                  🗑️ Delete Day
+                </button>
+              </div>
+            )}
             <StartDayButton />
           </div>
           <div className="flex-1 overflow-y-auto overscroll-contain">

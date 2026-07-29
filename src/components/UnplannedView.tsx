@@ -29,8 +29,8 @@ export default function UnplannedView() {
             className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-2.5 shadow-sm"
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold tracking-tight text-stone-800">{place.name}</p>
-              <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${tag.className}`}>
+              <p className="truncate text-[17px] font-semibold tracking-tight text-stone-900">{place.name}</p>
+              <span className="mt-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
                 {tag.text}
               </span>
             </div>

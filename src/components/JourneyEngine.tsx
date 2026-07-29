@@ -1,34 +1,44 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore, FATIGUE_PER_METER, MEAL_BOOST } from "@/store/useJourneyStore";
 import { haversineMeters } from "@/lib/geo";
 import { vibrate } from "@/lib/haptics";
+import type { LatLng } from "@/lib/types";
 
 const ARRIVAL_RADIUS_M = 20;
+const GEM_UNLOCK_RADIUS_M = 20;
 const TICK_MS = 2000;
+const DECAY_TICK_MS = 60000;
+const WALK_DISTANCE_THRESHOLD_M = 10;
+const WALK_DECAY_MULTIPLIER = 1.5;
 
 /**
  * Headless "game loop" for the live trip experience — mounted once in
- * AppShell, renders nothing. Owns three independent jobs:
- *  1. Ticks hunger/thirst decay every TICK_MS, and fatigue recovery while resting.
- *  2. Manages the navigator.geolocation.watchPosition lifecycle tied to `dayStarted`.
- *  3. Geofences the live position against the day's next incomplete stop, and
+ * AppShell, renders nothing. Owns:
+ *  1. Fatigue recovery while resting, every TICK_MS, plus the Istanbul
+ *     midnight rollover check.
+ *  2. Hunger/thirst decay once a minute, with a walking-speed multiplier.
+ *  3. Manages the navigator.geolocation.watchPosition lifecycle tied to `dayStarted`.
+ *  4. Geofences the live position against the day's next incomplete stop, and
  *     syncs fatigue/hunger when a step is freshly checked off.
+ *  5. Geofences the live position against geo-locked hidden gems.
  */
 export default function JourneyEngine() {
   const dayStarted = useJourneyStore((s) => s.dayStarted);
+  const lastDecayLocationRef = useRef<LatLng | null>(null);
 
   // --- 0. rehydrate persisted fatigue/hunger/thirst/cats/dayStarted/tab from
-  //     localStorage once we're on the client (skipped during SSR), then sync
-  //     the restored tab's day index into useTripStore (the source of truth
-  //     for "which day" — this store only remembers what to restore it to) ---
+  //     localStorage once we're on the client (skipped during SSR), sync the
+  //     restored tab's day index into useTripStore, then back-fill however
+  //     much hunger/thirst should have depleted while the app was closed ---
   useEffect(() => {
     const result = useJourneyStore.persist.rehydrate();
     Promise.resolve(result).then(() => {
       const journey = useJourneyStore.getState();
       journey.checkMidnightReset();
+      journey.applyOfflineDecay();
       if (journey.panelView !== "day") return;
       const dayCount = useTripStore.getState().trip.days.length;
       if (dayCount === 0) return;
@@ -37,20 +47,38 @@ export default function JourneyEngine() {
     });
   }, []);
 
-  // --- 1. decay/recovery ticking, plus a per-tick check for the Istanbul
-  //     midnight rollover (fatigue/hunger/thirst reset; cats are untouched) ---
+  // --- 1. fatigue recovery + midnight rollover check ---
   useEffect(() => {
     const interval = setInterval(() => {
       const seconds = TICK_MS / 1000;
       const journey = useJourneyStore.getState();
-      journey.tickDecay(seconds);
       if (journey.restingStepId) journey.tickRecovery(seconds);
       journey.checkMidnightReset();
     }, TICK_MS);
     return () => clearInterval(interval);
   }, []);
 
-  // --- 2. geolocation watch lifecycle ---
+  // --- 2. hunger/thirst decay, once a minute, with a walking multiplier
+  //     based on how far the visitor moved since the previous tick ---
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const journey = useJourneyStore.getState();
+      const prevLocation = lastDecayLocationRef.current;
+      const currentLocation = journey.dayStarted ? journey.liveLocation : null;
+
+      let multiplier = 1;
+      if (prevLocation && currentLocation) {
+        const movedM = haversineMeters(prevLocation, currentLocation);
+        if (movedM > WALK_DISTANCE_THRESHOLD_M) multiplier = WALK_DECAY_MULTIPLIER;
+      }
+      lastDecayLocationRef.current = currentLocation;
+
+      journey.tickMinuteDecay(1, multiplier);
+    }, DECAY_TICK_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- 3. geolocation watch lifecycle ---
   useEffect(() => {
     if (!dayStarted) return;
     if (typeof navigator === "undefined" || !navigator.geolocation) return;
@@ -71,7 +99,7 @@ export default function JourneyEngine() {
     return () => navigator.geolocation.clearWatch(id);
   }, [dayStarted]);
 
-  // --- 3a. geofencing: distance to the day's next incomplete stop ---
+  // --- 4a. geofencing: distance to the day's next incomplete stop ---
   useEffect(() => {
     function checkProximity() {
       const journey = useJourneyStore.getState();
@@ -106,7 +134,7 @@ export default function JourneyEngine() {
     };
   }, []);
 
-  // --- 3b. sync fatigue/hunger when a step transitions to completed ---
+  // --- 4b. sync fatigue/hunger when a step transitions to completed ---
   useEffect(() => {
     const unsub = useTripStore.subscribe((state, prevState) => {
       const day = state.trip.days[state.activeDayIndex];
@@ -127,6 +155,33 @@ export default function JourneyEngine() {
       });
     });
     return unsub;
+  }, []);
+
+  // --- 5. geofencing: geo-locked hidden gems within unlock range ---
+  useEffect(() => {
+    function checkGems() {
+      const journey = useJourneyStore.getState();
+      if (!journey.dayStarted || !journey.liveLocation) return;
+      const { hiddenGems } = useTripStore.getState().trip;
+
+      for (const gem of hiddenGems) {
+        if (!gem.geoLocked) continue;
+        if (journey.discoveredGemIds.includes(gem.id)) continue;
+        const distanceM = haversineMeters(journey.liveLocation, { lat: gem.lat, lng: gem.lng });
+        if (distanceM <= GEM_UNLOCK_RADIUS_M) {
+          journey.triggerGemUnlock(gem.id, gem.note);
+          vibrate([100, 50, 100, 50, 200]);
+        }
+      }
+    }
+
+    checkGems();
+    const unsubTrip = useTripStore.subscribe(checkGems);
+    const unsubJourney = useJourneyStore.subscribe(checkGems);
+    return () => {
+      unsubTrip();
+      unsubJourney();
+    };
   }, []);
 
   return null;

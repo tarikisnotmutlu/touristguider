@@ -1,5 +1,9 @@
-import type { Day, RouteSegment, Step, Trip } from "./types";
+import type { Day, HiddenGem, RouteSegment, Step, Trip } from "./types";
 import { normalizeTransportMode } from "./transport";
+
+function normalizeGem(gem: HiddenGem): HiddenGem {
+  return { ...gem, geoLocked: gem.geoLocked ?? true };
+}
 
 function normalizeStep(step: Step): Step {
   return {
@@ -35,7 +39,7 @@ export function normalizeTrip(trip: Trip): Trip {
   return {
     ...trip,
     days: (trip.days ?? []).map(normalizeDay),
-    hiddenGems: trip.hiddenGems ?? [],
+    hiddenGems: (trip.hiddenGems ?? []).map(normalizeGem),
     unplanned: trip.unplanned ?? [],
   };
 }

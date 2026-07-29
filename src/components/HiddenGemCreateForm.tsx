@@ -10,10 +10,11 @@ export default function HiddenGemCreateForm({
   onCancel,
 }: {
   point: LatLng;
-  onSave: (note: string) => void;
+  onSave: (note: string, geoLocked: boolean) => void;
   onCancel: () => void;
 }) {
   const [note, setNote] = useState("");
+  const [geoLocked, setGeoLocked] = useState(true);
 
   return (
     <AnimatePresence>
@@ -33,9 +34,18 @@ export default function HiddenGemCreateForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
-          placeholder="Write the secret note only unlocked within 10m…"
+          placeholder="Write the secret note only unlocked within 20m…"
           className="mt-2 w-full rounded-lg border border-stone-200 bg-white/80 p-2 text-sm text-stone-900 placeholder-stone-400 focus:border-terracotta-400 focus:outline-none"
         />
+        <label className="mt-2.5 flex items-center gap-2 text-xs text-stone-600">
+          <input
+            type="checkbox"
+            checked={geoLocked}
+            onChange={(e) => setGeoLocked(e.target.checked)}
+            className="accent-terracotta-600"
+          />
+          🔒 Geo-Lock — require being nearby to unlock
+        </label>
         <div className="mt-3 flex justify-end gap-2">
           <button
             onClick={onCancel}
@@ -45,7 +55,7 @@ export default function HiddenGemCreateForm({
             Cancel
           </button>
           <button
-            onClick={() => note.trim() && onSave(note)}
+            onClick={() => note.trim() && onSave(note, geoLocked)}
             type="button"
             disabled={!note.trim()}
             className="rounded-full bg-terracotta-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-terracotta-700 disabled:opacity-40"
