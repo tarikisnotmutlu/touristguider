@@ -10,6 +10,7 @@ import MapGL, {
   type MapRef,
   type MapLayerMouseEvent,
   type MapLayerTouchEvent,
+  type ErrorEvent as MapErrorEvent,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useTripStore } from "@/store/useTripStore";
@@ -212,6 +213,12 @@ export default function MapView() {
     setPlacingGem(false);
   }
 
+  function handleMapError(e: MapErrorEvent) {
+    // Surfaces style/tile load failures in the console instead of failing
+    // silently — a blank basemap with no error is much harder to diagnose.
+    console.error("Map error:", e.error);
+  }
+
   if (!day) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400">
@@ -230,6 +237,7 @@ export default function MapView() {
         interactiveLayerIds={hitLayerIds}
         cursor={placingGem ? "crosshair" : dragState ? "grabbing" : undefined}
         onLoad={() => setReady(true)}
+        onError={handleMapError}
         onClick={handleMapClick}
         onMouseDown={beginDrag}
         onTouchStart={beginDrag}
@@ -239,7 +247,7 @@ export default function MapView() {
         onTouchEnd={endDrag}
         style={{ width: "100vw", height: "100vh" }}
       >
-        <NavigationControl position="top-right" showCompass={false} />
+        <NavigationControl position="bottom-right" showCompass={false} />
         <AttributionControl position="bottom-right" compact />
 
         <Marker longitude={day.startPoint.lng} latitude={day.startPoint.lat} anchor="center">
@@ -365,7 +373,7 @@ export default function MapView() {
               : "text-stone-600 hover:text-stone-900")
           }
         >
-          💎 {placingGem ? "Click the map to drop it…" : "Drop Hidden Gem"}
+          ✨ {placingGem ? "Click the map to drop it…" : "Drop Hidden Gem"}
         </button>
       )}
 

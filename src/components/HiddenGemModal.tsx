@@ -110,7 +110,7 @@ export default function HiddenGemModal() {
 
             {(displayPhase === "unlocked" || displayPhase === "creator") && (
               <>
-                <div className="text-4xl">💎</div>
+                <div className="text-4xl">✨</div>
                 <h3 className="mt-3 text-lg font-semibold tracking-tight text-stone-800">
                   {displayPhase === "creator" ? "Your hidden gem" : "Unlocked!"}
                 </h3>

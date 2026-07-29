@@ -35,7 +35,7 @@ export function GhostMarker() {
 }
 
 export function GemMarker() {
-  return <div className="tg-gem-marker">💎</div>;
+  return <div className="tg-gem-marker">✨</div>;
 }
 
 export function LiveLocationMarker() {

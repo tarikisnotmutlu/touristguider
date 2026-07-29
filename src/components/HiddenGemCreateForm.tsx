@@ -24,7 +24,7 @@ export default function HiddenGemCreateForm({
         transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
         className="glass-panel absolute right-4 top-32 z-10 w-80 rounded-2xl p-4 shadow-xl"
       >
-        <h3 className="text-sm font-semibold tracking-tight text-stone-800">💎 New hidden gem</h3>
+        <h3 className="text-sm font-semibold tracking-tight text-stone-800">✨ New hidden gem</h3>
         <p className="mt-0.5 text-[11px] text-stone-400">
           {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
         </p>
