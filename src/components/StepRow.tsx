@@ -72,7 +72,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
 
   return (
     <>
-      <div className="flex justify-center pt-1.5">
+      <div className="flex items-start justify-center pt-1.5">
         <button
           onClick={() => setActiveStepId(step.id)}
           type="button"
@@ -83,7 +83,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         </button>
       </div>
 
-      <div ref={setNodeRef} style={dragStyle} className="mb-2 flex w-full max-w-full flex-row items-center gap-2">
+      <div ref={setNodeRef} style={dragStyle} className="mb-2 flex w-full max-w-full flex-row items-start gap-2">
       <motion.div
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.3 : 1 }}
         transition={SPRING}
@@ -93,7 +93,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           // flex-none width, and (combined with the old `w-full` here fighting
           // the flex layout) forced the whole card past the viewport instead
           // of letting the title inside it actually truncate.
-          "flex min-w-0 flex-1 flex-row items-center gap-3 rounded-[20px] border p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
+          "flex min-w-0 flex-1 flex-row items-start gap-3 rounded-[20px] border p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]",
           step.completed && "grayscale-[30%]",
           step.id === activeStepId ? "border-sage-300 bg-sage-50/95" : "border-white/60 bg-white/80"
         )}
@@ -102,7 +102,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           <button
             {...attributes}
             {...listeners}
-            className="shrink-0 cursor-grab touch-none text-stone-300 active:cursor-grabbing"
+            className="shrink-0 cursor-grab touch-none pt-0.5 text-stone-300 active:cursor-grabbing"
             aria-label="Drag to reorder"
             type="button"
           >
@@ -110,37 +110,40 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           </button>
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1" onClick={() => !isEditMode && setActiveStepId(step.id)}>
-          <div className="flex min-w-0 flex-row items-center justify-between gap-2">
-            {isEditMode ? (
-              <input
-                value={step.name}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => updateStep(dayId, step.id, { name: e.target.value })}
-                className="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-800 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
-              />
-            ) : (
-              <p
-                className={clsx(
-                  "min-w-0 flex-1 cursor-pointer truncate text-[17px] font-semibold tracking-tight text-stone-800 transition-all",
-                  step.completed && "text-stone-400 line-through decoration-stone-300"
-                )}
-                onClick={() => setActiveStepId(step.id)}
-              >
-                {step.name}
-              </p>
+        <div
+          className="flex min-w-0 flex-1 flex-row flex-wrap items-center gap-x-2 gap-y-1.5"
+          onClick={() => !isEditMode && setActiveStepId(step.id)}
+        >
+          {isEditMode ? (
+            <input
+              value={step.name}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => updateStep(dayId, step.id, { name: e.target.value })}
+              className="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-800 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
+            />
+          ) : (
+            <span
+              className={clsx(
+                "cursor-pointer whitespace-normal break-words text-[17px] font-semibold leading-tight tracking-tight text-stone-800 transition-all",
+                step.completed && "text-stone-400 line-through decoration-stone-300"
+              )}
+              onClick={() => setActiveStepId(step.id)}
+            >
+              {step.name}
+            </span>
+          )}
+          <div className="flex flex-none items-center gap-1.5">
+            <span className="flex-none whitespace-nowrap rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+              {tag.text}
+            </span>
+            {step.arrival && (
+              <span className="flex-none whitespace-nowrap text-xs font-medium text-stone-500">{step.arrival}</span>
             )}
-            <div className="flex shrink-0 items-center gap-1.5">
-              <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-                {tag.text}
-              </span>
-              {step.arrival && <span className="text-xs font-medium text-stone-500">{step.arrival}</span>}
-            </div>
           </div>
         </div>
 
         {isEditMode && (
-          <div className="flex shrink-0 flex-col items-end gap-1">
+          <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
             <label className="flex items-center gap-1 text-[11px] text-stone-400">
               <input
                 type="number"
@@ -183,7 +186,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           }}
           type="button"
           title={`${doneCount}/${step.checklist.length} done — tap to open the checklist`}
-          className="relative flex flex-none shrink-0 cursor-pointer items-center justify-center"
+          className="relative mt-0.5 flex flex-none shrink-0 cursor-pointer items-center justify-center"
           style={{ width: RING_SIZE, height: RING_SIZE }}
         >
           <ProgressRing ratio={doneCount / step.checklist.length} />
@@ -200,7 +203,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           type="button"
           title={step.completed ? "Mark as not done" : "Mark as done"}
           className={clsx(
-            "flex flex-none shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors",
+            "mt-0.5 flex flex-none shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors",
             step.completed ? "border-sage-600 bg-sage-600" : "border-stone-300 bg-white hover:border-sage-400"
           )}
           style={{ width: RING_SIZE, height: RING_SIZE }}
