@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import DayTabs from "./DayTabs";
@@ -19,7 +20,7 @@ const SAVE_LABEL = {
   saved: "Saved ✓",
 } as const;
 
-export default function PanelContent() {
+export default function PanelContent({ respectSheetCollapse = false }: { respectSheetCollapse?: boolean }) {
   const trip = useTripStore((s) => s.trip);
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const saveState = useTripStore((s) => s.saveState);
@@ -28,7 +29,12 @@ export default function PanelContent() {
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const panelView = useJourneyStore((s) => s.panelView);
   const setSavedDayIndex = useJourneyStore((s) => s.setSavedDayIndex);
+  const sheetExpanded = useJourneyStore((s) => s.sheetExpanded);
   const day = trip.days[activeDayIndex];
+  // DesktopPanel has no collapse state at all, so its own PanelContent
+  // instance never passes respectSheetCollapse — only MobileSheet's copy
+  // ties these buttons to isExpanded.
+  const showActions = !respectSheetCollapse || sheetExpanded;
 
   const spotCount = trip.days.reduce((sum, d) => sum + d.steps.length, 0);
 
@@ -40,7 +46,13 @@ export default function PanelContent() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-1">
+      <motion.div
+        animate={{ opacity: showActions ? 1 : 0, y: showActions ? 0 : 10 }}
+        transition={{ duration: 0.2 }}
+        className={`flex shrink-0 items-center justify-between gap-2 px-3 pt-1 ${
+          showActions ? "" : "pointer-events-none"
+        }`}
+      >
         <p className="truncate text-[11px] text-stone-400">
           {isEditMode ? SAVE_LABEL[saveState] : ""}
         </p>
@@ -50,7 +62,7 @@ export default function PanelContent() {
           <TripMenu />
           <ShareButton />
         </div>
-      </div>
+      </motion.div>
 
       {/* Destination card: title + subtitle, Wanderlog-style. */}
       <div className="flex shrink-0 flex-col gap-0.5 border-b border-stone-200/70 px-3 pb-3 pt-2">

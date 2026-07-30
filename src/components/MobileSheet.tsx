@@ -38,7 +38,7 @@ export default function MobileSheet() {
         </svg>
       </button>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <PanelContent />
+        <PanelContent respectSheetCollapse />
       </div>
     </motion.div>
   );
