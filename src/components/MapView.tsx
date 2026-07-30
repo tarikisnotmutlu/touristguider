@@ -13,7 +13,9 @@ import { boundsOf, estimateDurationMin, haversineMeters, projectPointOntoPolylin
 import { dayColor } from "@/lib/dayColors";
 import {
   createStepMarkerEl,
+  updateStepMarkerEl,
   createStartMarkerEl,
+  updateStartMarkerEl,
   createViaMarkerEl,
   createGhostMarkerEl,
   createGemMarkerEl,
@@ -45,7 +47,10 @@ function lineSourceId(dayId: string, segIndex: number) {
   return `route-${dayId}-${segIndex}`;
 }
 
-function toGeoJSONLine(coords: LatLng[], properties: Record<string, string | number>): GeoJSON.Feature<GeoJSON.LineString> {
+function toGeoJSONLine(
+  coords: LatLng[],
+  properties: Record<string, string | number | boolean>
+): GeoJSON.Feature<GeoJSON.LineString> {
   return {
     type: "Feature",
     properties,
@@ -54,6 +59,26 @@ function toGeoJSONLine(coords: LatLng[], properties: Record<string, string | num
       coordinates: coords.map((p) => [p.lng, p.lat]),
     },
   };
+}
+
+/** Marker click → expand the bottom sheet and scroll to the matching
+ *  Location Card. Deferred so the sheet's own expand animation has time to
+ *  grow the scroll container to (close to) its final height first —
+ *  scrolling immediately would compute an offset against the still-small
+ *  collapsed layout and land in the wrong place. Both DesktopPanel and
+ *  MobileSheet render their own copy of the timeline, so this queries all
+ *  matches and scrolls whichever one is actually visible/laid out
+ *  (`offsetParent !== null`) rather than assuming a single element. */
+function scrollToStepCard(stepId: string) {
+  setTimeout(() => {
+    const candidates = document.querySelectorAll<HTMLElement>(`[data-step-card-id="${CSS.escape(stepId)}"]`);
+    for (const el of Array.from(candidates)) {
+      if (el.offsetParent !== null) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+    }
+  }, 350);
 }
 
 interface DragState {
@@ -86,8 +111,13 @@ export default function MapView() {
   const fitDayIdRef = useRef<string | null>(null);
   const routeSignaturesRef = useRef(new Map<string, string>());
 
-  const startMarkersRef = useRef<maplibregl.Marker[]>([]);
-  const stepMarkersRef = useRef<maplibregl.Marker[]>([]);
+  // Keyed dictionaries (day.id / step.id) rather than plain arrays — lets the
+  // marker-sync effects below update an existing marker's position/element
+  // in place instead of tearing down and recreating every marker on every
+  // trip mutation, which was the source of a visible flicker across all
+  // markers whenever a single step was toggled done.
+  const startMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
+  const stepMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
   const viaMarkersRef = useRef<maplibregl.Marker[]>([]);
   const ghostMarkerRef = useRef<maplibregl.Marker | null>(null);
   const gemMarkersRef = useRef<maplibregl.Marker[]>([]);
@@ -99,8 +129,6 @@ export default function MapView() {
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const panelView = useJourneyStore((s) => s.panelView);
-  const setPanelView = useJourneyStore((s) => s.setPanelView);
-  const setSavedDayIndex = useJourneyStore((s) => s.setSavedDayIndex);
   const day = trip.days[activeDayIndex];
   const overviewMode = panelView === "overview";
   // In overview mode every day renders at once, each carrying its own real
@@ -272,8 +300,10 @@ export default function MapView() {
       window.removeEventListener("orientationchange", wakeUp);
       document.removeEventListener("visibilitychange", wakeUp);
       resizeObserver.disconnect();
-      startMarkersRef.current.forEach((m) => m.remove());
-      stepMarkersRef.current.forEach((m) => m.remove());
+      Object.values(startMarkersRef.current).forEach((m) => m.remove());
+      Object.values(stepMarkersRef.current).forEach((m) => m.remove());
+      startMarkersRef.current = {};
+      stepMarkersRef.current = {};
       viaMarkersRef.current.forEach((m) => m.remove());
       ghostMarkerRef.current?.remove();
       gemMarkersRef.current.forEach((m) => m.remove());
@@ -357,7 +387,11 @@ export default function MapView() {
           desiredIds.add(srcId);
 
           const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
-          const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i });
+          // isCompleted rides on the feature itself (not a separate paint
+          // call) so the line-opacity expression below re-evaluates it
+          // automatically on every setData — no removeLayer/addLayer, and
+          // no per-property update call, needed just to fade a finished leg.
+          const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i, isCompleted: step.completed });
           const color = dayColor(index);
           const routable = ROUTABLE_MODES.includes(route.mode);
           const signature = route.mode;
@@ -384,8 +418,18 @@ export default function MapView() {
             paint: {
               "line-color": color,
               "line-width": 5,
-              "line-opacity": 0.85,
-              ...(routable ? {} : { "line-dasharray": [1, 2] }),
+              // Data-driven so a done-toggle just needs setData (above) to
+              // fade the segment — a finished leg recedes the same way a
+              // completed card/marker does elsewhere in the app.
+              "line-opacity": ["case", ["==", ["get", "isCompleted"], true], 0.3, 0.85],
+              ...(route.mode === "walk"
+                ? // A tight dotted pattern reads as a distinct "walking path"
+                  // texture, independent of the day-color used for the line
+                  // itself — drive stays a plain solid line.
+                  { "line-dasharray": [0.3, 1.8] }
+                : routable
+                  ? {}
+                  : { "line-dasharray": [1, 2] }),
             },
           });
           if (routable) {
@@ -422,51 +466,102 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    startMarkersRef.current.forEach((m) => m.remove());
-    startMarkersRef.current = daysToRender.map(({ day, index }) =>
-      new maplibregl.Marker({
-        element: createStartMarkerEl(overviewMode ? dayColor(index) : undefined),
-        anchor: "center",
-      })
-        .setLngLat([day.startPoint.lng, day.startPoint.lat])
-        .addTo(map)
-    );
+    const desiredIds = new Set<string>();
+
+    daysToRender.forEach(({ day, index }) => {
+      desiredIds.add(day.id);
+      const color = overviewMode ? dayColor(index) : undefined;
+      const existing = startMarkersRef.current[day.id];
+      if (existing) {
+        existing.setLngLat([day.startPoint.lng, day.startPoint.lat]);
+        updateStartMarkerEl(existing.getElement() as HTMLDivElement, color);
+      } else {
+        startMarkersRef.current[day.id] = new maplibregl.Marker({
+          element: createStartMarkerEl(color),
+          anchor: "center",
+        })
+          .setLngLat([day.startPoint.lng, day.startPoint.lat])
+          .addTo(map);
+      }
+    });
+
+    Object.keys(startMarkersRef.current).forEach((id) => {
+      if (desiredIds.has(id)) return;
+      startMarkersRef.current[id].remove();
+      delete startMarkersRef.current[id];
+    });
   }, [daysToRender, overviewMode]);
 
-  // ---- step markers (rebuilt on step list changes or active-step change) ----
+  // ---- step markers ----
+  // Diffs against the existing marker dictionary instead of
+  // remove-everything-then-recreate-everything: an existing marker for a
+  // step that's still present gets its position/element updated in place
+  // (see updateStepMarkerEl), so toggling one step's completed state no
+  // longer visibly flickers every other marker on the map.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    const desiredIds = new Set<string>();
 
-    stepMarkersRef.current.forEach((m) => m.remove());
-    stepMarkersRef.current = daysToRender.flatMap(({ day, index }) =>
-      day.steps.map((step, i) => {
-        const el = createStepMarkerEl(
-          i + 1,
-          step.category,
-          step.id === activeStepId,
-          overviewMode ? dayColor(index) : undefined
-        );
+    daysToRender.forEach(({ day, index }) => {
+      day.steps.forEach((step, i) => {
+        desiredIds.add(step.id);
+        const color = overviewMode ? dayColor(index) : undefined;
+        const active = step.id === activeStepId;
+        const existing = stepMarkersRef.current[step.id];
+
+        if (existing) {
+          existing.setLngLat([step.lng, step.lat]);
+          // maplibre-gl's Marker owns its element's opacity internally (it
+          // resets `element.style.opacity` on every render/move tick), so
+          // completed-step dimming has to go through this setter rather
+          // than touching el.style directly.
+          existing.setOpacity(step.completed ? "0.2" : "1");
+          const el = existing.getElement() as HTMLDivElement;
+          updateStepMarkerEl(el, i + 1, step.category, active, color);
+          el.dataset.stepId = step.id;
+          el.dataset.dayIndex = String(index);
+          return;
+        }
+
+        const el = createStepMarkerEl(i + 1, step.category, active, color);
+        el.dataset.stepId = step.id;
+        el.dataset.dayIndex = String(index);
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          if (overviewMode) {
-            useTripStore.getState().setActiveDayIndex(index);
-            setSavedDayIndex(index);
-            setPanelView("day");
+          // Read everything fresh off the element/stores at click time
+          // rather than closing over `step`/`index`/`overviewMode` — this
+          // listener is attached once and the marker/element persists
+          // across re-renders, so a closure would go stale the moment any
+          // of those values changed after creation.
+          const clickedId = el.dataset.stepId;
+          const clickedDayIndex = Number(el.dataset.dayIndex);
+          if (!clickedId) return;
+          if (useJourneyStore.getState().panelView === "overview") {
+            useTripStore.getState().setActiveDayIndex(clickedDayIndex);
+            useJourneyStore.getState().setSavedDayIndex(clickedDayIndex);
+            useJourneyStore.getState().setPanelView("day");
           }
-          useTripStore.getState().setActiveStepId(step.id);
+          useTripStore.getState().setActiveStepId(clickedId);
+          useJourneyStore.getState().setSheetExpanded(true);
+          scrollToStepCard(clickedId);
         });
-        // maplibre-gl's Marker owns its element's opacity internally (it
-        // resets `element.style.opacity` on every render/move tick to
-        // whatever was passed here, or "1" by default) — setting the style
-        // directly on `el` gets silently clobbered, so completed-step
-        // dimming has to go through this option instead.
-        return new maplibregl.Marker({ element: el, anchor: "center", opacity: step.completed ? "0.2" : "1" })
+        stepMarkersRef.current[step.id] = new maplibregl.Marker({
+          element: el,
+          anchor: "center",
+          opacity: step.completed ? "0.2" : "1",
+        })
           .setLngLat([step.lng, step.lat])
           .addTo(map);
-      })
-    );
-  }, [daysToRender, activeStepId, overviewMode, setPanelView, setSavedDayIndex]);
+      });
+    });
+
+    Object.keys(stepMarkersRef.current).forEach((id) => {
+      if (desiredIds.has(id)) return;
+      stepMarkersRef.current[id].remove();
+      delete stepMarkersRef.current[id];
+    });
+  }, [daysToRender, activeStepId, overviewMode]);
 
   // ---- draggable manual-waypoint ("via") markers ----
   // Only for the single active day being edited — overview mode has no one

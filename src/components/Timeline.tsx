@@ -19,10 +19,16 @@ export default function Timeline({ dayId }: { dayId: string }) {
   const addHiddenGem = useTripStore((s) => s.addHiddenGem);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
 
-  const sensors = useSensors(
+  const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } })
   );
+  // An empty sensors array means DndContext has no way to ever pick up a
+  // pointer/touch as the start of a drag — stronger than just hiding the
+  // handle (StepRow already only renders it in edit mode), since it also
+  // means a stray touch on the card itself can never be mistaken for a
+  // drag gesture and can never fight with normal list scrolling.
+  const sensors = isEditMode ? dragSensors : [];
 
   if (!day) return null;
 

@@ -21,12 +21,41 @@ export function createStepMarkerEl(
   return el;
 }
 
+/** Mutates an existing step marker element in place (index/category/active
+ *  state/day color) instead of throwing it away — paired with
+ *  createStepMarkerEl so MapView can keep reusing the same marker/DOM node
+ *  across re-renders and only touch what actually changed. */
+export function updateStepMarkerEl(
+  el: HTMLDivElement,
+  index: number,
+  category: PlaceCategory,
+  active: boolean,
+  colorOverride?: string
+): void {
+  el.className = "tg-marker" + (active ? " tg-marker-active" : "");
+  el.style.borderColor = colorOverride ?? CATEGORY_COLOR[category];
+  const icon = el.querySelector<HTMLSpanElement>(".tg-marker-icon");
+  const badge = el.querySelector<HTMLSpanElement>(".tg-marker-badge");
+  if (icon) icon.textContent = CATEGORY_ICON[category];
+  if (badge) badge.textContent = String(index);
+}
+
+// Must match .tg-start-marker's own border-color in globals.css — the
+// update function (unlike the create function) has to be able to
+// explicitly restore this default on an element that previously had an
+// inline override color (e.g. leaving Overview mode).
+const START_MARKER_DEFAULT_BORDER = "rgba(41, 37, 36, 0.55)";
+
 export function createStartMarkerEl(colorOverride?: string): HTMLDivElement {
   const el = document.createElement("div");
   el.className = "tg-start-marker";
   el.textContent = "🕛";
   if (colorOverride) el.style.borderColor = colorOverride;
   return el;
+}
+
+export function updateStartMarkerEl(el: HTMLDivElement, colorOverride?: string): void {
+  el.style.borderColor = colorOverride ?? START_MARKER_DEFAULT_BORDER;
 }
 
 export function createViaMarkerEl(): HTMLDivElement {

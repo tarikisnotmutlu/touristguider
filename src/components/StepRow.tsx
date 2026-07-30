@@ -83,7 +83,12 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
         </button>
       </div>
 
-      <div ref={setNodeRef} style={dragStyle} className="mb-2 flex w-full max-w-full flex-row items-start gap-2">
+      <div
+        ref={setNodeRef}
+        style={dragStyle}
+        data-step-card-id={step.id}
+        className="mb-2 flex w-full max-w-full flex-row items-start gap-2"
+      >
       <motion.div
         animate={{ opacity: isDragging ? 0.5 : step.completed ? 0.3 : 1 }}
         transition={SPRING}
