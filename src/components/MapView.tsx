@@ -64,6 +64,10 @@ interface DragState {
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  // Explicit alongside `mapRef.current` (which already guards against a
+  // second construction) so the init effect's early-return reads as an
+  // intentional StrictMode-double-mount lock, not just a null check.
+  const isMapInitialized = useRef(false);
   const [ready, setReady] = useState(false);
   const [placingGem, setPlacingGem] = useState(false);
   const [pendingGemPoint, setPendingGemPoint] = useState<LatLng | null>(null);
@@ -155,7 +159,8 @@ export default function MapView() {
 
   // ---- initialize the raw maplibre-gl map exactly once ----
   useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
+    if (!mapContainer.current || mapRef.current || isMapInitialized.current) return;
+    isMapInitialized.current = true;
 
     const state = useTripStore.getState();
     const startDay = state.trip.days[state.activeDayIndex];
@@ -175,7 +180,14 @@ export default function MapView() {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "MapLibre" }), "bottom-right");
 
-    map.on("load", () => setReady(true));
+    map.on("load", () => {
+      setReady(true);
+      // A deferred resize() right after 'load' catches the case where the
+      // canvas painted its first frame at a stale size (container still
+      // mid-transition/animation) — cheap, and a no-op if the size was
+      // already correct.
+      setTimeout(() => map.resize(), 0);
+    });
     map.on("error", (e: maplibregl.ErrorEvent) => {
       // Surfaces style/tile load failures in the console instead of failing
       // silently — a blank basemap with no error is much harder to diagnose.
@@ -268,6 +280,7 @@ export default function MapView() {
       liveMarkerRef.current?.remove();
       map.remove();
       mapRef.current = null;
+      isMapInitialized.current = false;
     };
   }, []);
 

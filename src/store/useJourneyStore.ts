@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { LatLng } from "@/lib/types";
 import { istanbulDateString } from "@/lib/istanbulDate";
+import { GM_ACTION_MESSAGE, type GmAction } from "@/lib/telemetry";
 
 /**
  * Ephemeral "real-life RPG" state for the live trip experience — deliberately
@@ -125,6 +126,14 @@ interface JourneyState {
   gemHintVisible: boolean;
   showGemHint: () => void;
   clearGemHint: () => void;
+
+  /** Applied when useSyncTelemetry picks up a Game Master override (see
+   *  /api/sync/overrides/[playerId]) — reuses the same stat fields the
+   *  player's own HUD taps write to, so a GM "heal" looks identical to the
+   *  player doing it themselves, just remotely triggered. */
+  applyGmOverride: (action: GmAction) => void;
+  gmMessage: string | null;
+  clearGmMessage: () => void;
 }
 
 export const CAT_MILESTONES = [1, 5, 10, 25, 50];
@@ -241,6 +250,31 @@ export const useJourneyStore = create<JourneyState>()(
       gemHintVisible: false,
       showGemHint: () => set({ gemHintVisible: true }),
       clearGemHint: () => set({ gemHintVisible: false }),
+
+      gmMessage: null,
+      applyGmOverride: (action) =>
+        set((s) => {
+          const message = GM_ACTION_MESSAGE[action];
+          switch (action) {
+            case "full_heal":
+              return { hunger: 100, thirst: 100, fatigue: 0, lastUpdatedTimestamp: Date.now(), gmMessage: message };
+            case "send_water":
+              return { thirst: clampPercent(s.thirst + WATER_BOOST), lastUpdatedTimestamp: Date.now(), gmMessage: message };
+            case "cure_fatigue":
+              return { fatigue: 0, gmMessage: message };
+            case "gift_cat": {
+              const next = s.catsPetted + 1;
+              return {
+                catsPetted: next,
+                lastCatMilestone: CAT_MILESTONES.includes(next) ? next : s.lastCatMilestone,
+                gmMessage: message,
+              };
+            }
+            default:
+              return {};
+          }
+        }),
+      clearGmMessage: () => set({ gmMessage: null }),
     }),
     {
       name: "touristguider-journey",

@@ -5,6 +5,7 @@ import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore, FATIGUE_PER_METER, MEAL_BOOST } from "@/store/useJourneyStore";
 import { haversineMeters } from "@/lib/geo";
 import { vibrate } from "@/lib/haptics";
+import { useSyncTelemetry } from "@/hooks/useSyncTelemetry";
 import type { LatLng } from "@/lib/types";
 
 const ARRIVAL_RADIUS_M = 20;
@@ -24,10 +25,14 @@ const WALK_DECAY_MULTIPLIER = 1.5;
  *  4. Geofences the live position against the day's next incomplete stop, and
  *     syncs fatigue/hunger when a step is freshly checked off.
  *  5. Geofences the live position against geo-locked hidden gems.
+ *  6. Via useSyncTelemetry: reports location/stats to the Game Master
+ *     dashboard and applies any GM overrides it queues.
  */
 export default function JourneyEngine() {
   const dayStarted = useJourneyStore((s) => s.dayStarted);
   const lastDecayLocationRef = useRef<LatLng | null>(null);
+
+  useSyncTelemetry();
 
   // --- 0. rehydrate persisted fatigue/hunger/thirst/cats/dayStarted/tab from
   //     localStorage once we're on the client (skipped during SSR), sync the

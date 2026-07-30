@@ -133,7 +133,7 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
             </span>
           )}
           <div className="flex flex-none items-center gap-1.5">
-            <span className="flex-none whitespace-nowrap rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+            <span className="flex-none whitespace-nowrap rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-600">
               {tag.text}
             </span>
             {step.arrival && (

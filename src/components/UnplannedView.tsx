@@ -30,7 +30,7 @@ export default function UnplannedView() {
           >
             <div className="min-w-0 flex-1">
               <p className="truncate text-[17px] font-semibold tracking-tight text-stone-900">{place.name}</p>
-              <span className="mt-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
+              <span className="mt-1 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-stone-600">
                 {tag.text}
               </span>
             </div>
