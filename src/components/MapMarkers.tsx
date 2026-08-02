@@ -85,7 +85,7 @@ export function createGemMarkerEl(): HTMLDivElement {
 
 export function createLiveLocationMarkerEl(): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "relative flex h-4 w-4 items-center justify-center";
+  el.className = "tg-live-marker relative flex h-4 w-4 items-center justify-center";
   const ping = document.createElement("span");
   ping.className = "absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75";
   const dot = document.createElement("span");

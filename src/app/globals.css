@@ -111,12 +111,19 @@ body {
      instead of snapping instantly, which reads as the marker "wobbling"
      and lagging behind the map while panning. */
   transition: box-shadow 0.15s ease;
+  /* Explicit stacking order across every marker type (all `position:
+     absolute` via MapLibre's own .maplibregl-marker class) — without this,
+     overlapping markers stack by DOM/effect insertion order instead, which
+     let a via/ghost/gem/start marker silently sit on top of and swallow
+     clicks meant for the numbered stop marker underneath it. Numbered stops
+     are the itinerary's actual "nodes", so they always win. */
+  z-index: 4;
 }
 
 .tg-marker-active {
   transform: scale(1.15);
   box-shadow: 0 4px 14px rgba(41, 37, 36, 0.45);
-  z-index: 5;
+  z-index: 6;
 }
 
 .tg-marker-icon {
@@ -156,6 +163,7 @@ body {
   font-size: 13px;
   border: 2px solid rgba(41, 37, 36, 0.55);
   box-shadow: 0 2px 8px rgba(41, 37, 36, 0.3);
+  z-index: 3;
 }
 
 .tg-gem-marker {
@@ -172,6 +180,7 @@ body {
   border: 2px solid var(--color-terracotta-500);
   box-shadow: 0 2px 10px rgba(189, 94, 49, 0.35);
   cursor: pointer;
+  z-index: 3;
 }
 
 /* Small drag-handle marker for a user-added via point on a manually edited route. */
@@ -183,6 +192,7 @@ body {
   border: 3px solid #292524;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   cursor: grab;
+  z-index: 2;
 }
 
 /* Ghost preview marker shown while dragging a new via point onto the route. */
@@ -193,4 +203,10 @@ body {
   background: var(--color-terracotta-400);
   border: 3px solid white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+/* The live-location dot should read clearly, but numbered stops still win. */
+.tg-live-marker {
+  z-index: 5;
 }

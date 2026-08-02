@@ -15,6 +15,7 @@ export default function StepCard() {
   const addChecklistItem = useTripStore((s) => s.addChecklistItem);
   const removeChecklistItem = useTripStore((s) => s.removeChecklistItem);
   const updateStep = useTripStore((s) => s.updateStep);
+  const removeStep = useTripStore((s) => s.removeStep);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const [newItem, setNewItem] = useState("");
 
@@ -154,6 +155,19 @@ export default function StepCard() {
                 </p>
               )}
             </div>
+          )}
+
+          {isEditMode && (
+            <button
+              onClick={() => {
+                removeStep(found!.dayId, found!.step.id);
+                setActiveStepId(null);
+              }}
+              type="button"
+              className="text-xs font-medium text-terracotta-600 hover:text-terracotta-700"
+            >
+              🗑️ Delete this stop
+            </button>
           )}
         </div>
       )}
