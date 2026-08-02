@@ -209,6 +209,29 @@ body {
   }
 }
 
+/* Small drag-handle marker for a user-added via point on a manually edited route. */
+.tg-via-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: white;
+  border: 3px solid #292524;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+  z-index: 2;
+}
+
+/* Ghost preview marker shown while dragging a new via point onto the route. */
+.tg-ghost-marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--color-terracotta-400);
+  border: 3px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
 /* The live-location dot should read clearly, but numbered stops still win. */
 .tg-live-marker {
   z-index: 5;

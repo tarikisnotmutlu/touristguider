@@ -9,7 +9,13 @@ import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
 import { ROUTABLE_MODES, type LatLng, type TransportMode } from "@/lib/types";
 import { pointBefore } from "@/lib/dayHelpers";
 import { fetchRoute } from "@/lib/osrmHttp";
-import { bearingDegrees, boundsOf, estimateDurationMin, haversineMeters } from "@/lib/geo";
+import {
+  bearingDegrees,
+  boundsOf,
+  estimateDurationMin,
+  haversineMeters,
+  projectPointOntoPolyline,
+} from "@/lib/geo";
 import { dayColor } from "@/lib/dayColors";
 import {
   createStepMarkerEl,
@@ -17,6 +23,8 @@ import {
   createStartMarkerEl,
   updateStartMarkerEl,
   createRouteArrowEl,
+  createViaMarkerEl,
+  createGhostMarkerEl,
   createGemMarkerEl,
   createLiveLocationMarkerEl,
 } from "./MapMarkers";
@@ -25,9 +33,11 @@ import AddStopPinForm from "./AddStopPinForm";
 // Istanbul, used only as a fallback center before any trip data has loaded.
 const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
 
-// ~12s of failed OSRM attempts (4s apart) before a segment gives up waiting
-// and shows a clearly-marked straight-line estimate instead of a permanent gap.
-const DEGRADE_AFTER_ATTEMPTS = 3;
+// After a single failed OSRM attempt, a segment shows a clearly-marked
+// straight-line estimate instead of leaving a gap the user has to just wait
+// out — better an obviously-fake line the user can drag into shape (see the
+// via-marker system) than looking like the app silently isn't working.
+const DEGRADE_AFTER_ATTEMPTS = 1;
 
 // MapLibre spins up its tile-parsing worker via `new Worker(new URL(...,
 // import.meta.url))` inside its own bundled module — Turbopack doesn't
@@ -97,6 +107,11 @@ function scrollToStepCard(stepId: string) {
   }, 350);
 }
 
+interface DragState {
+  dayId: string;
+  segIndex: number;
+}
+
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -105,7 +120,15 @@ export default function MapView() {
   // intentional StrictMode-double-mount lock, not just a null check.
   const isMapInitialized = useRef(false);
   const [ready, setReady] = useState(false);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [ghostPoint, setGhostPoint] = useState<LatLng | null>(null);
   const [pendingStopPoint, setPendingStopPoint] = useState<LatLng | null>(null);
+
+  // Mirrors of state read inside stable (bound-once) map event handlers,
+  // which otherwise close over stale values.
+  const dragStateRef = useRef(dragState);
+  const ghostPointRef = useRef(ghostPoint);
+  const hitLayerIdsRef = useRef<string[]>([]);
 
   const fetchKeyRef = useRef(new Map<string, string>());
   const retryCountRef = useRef(new Map<string, number>());
@@ -120,6 +143,8 @@ export default function MapView() {
   // markers whenever a single step was toggled done.
   const startMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
   const stepMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
+  const viaMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const ghostMarkerRef = useRef<maplibregl.Marker | null>(null);
   const routeArrowRef = useRef<maplibregl.Marker | null>(null);
   const gemMarkersRef = useRef<maplibregl.Marker[]>([]);
   const liveMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -142,6 +167,50 @@ export default function MapView() {
     () => (overviewMode ? trip.days.map((d, i) => ({ day: d, index: i })) : day ? [{ day, index: activeDayIndex }] : []),
     [overviewMode, trip.days, day, activeDayIndex]
   );
+
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+  useEffect(() => {
+    ghostPointRef.current = ghostPoint;
+  }, [ghostPoint]);
+
+  const hitLayerIds = useMemo(() => {
+    // Manual-waypoint dragging only makes sense for a single active day's
+    // route being edited — disabled in overview mode (no single "current"
+    // route to bend) and, per the strict view/edit split, disabled entirely
+    // outside Edit Mode so an accidental drag on the map can never mutate
+    // the itinerary while just browsing.
+    if (!day || overviewMode || !isEditMode) return [];
+    return day.steps
+      .map((_, i) => ({ i, mode: day.routes[i]?.mode }))
+      .filter(({ mode }) => mode && ROUTABLE_MODES.includes(mode))
+      .map(({ i }) => `${lineSourceId(day.id, i)}-hit`);
+  }, [day, overviewMode, isEditMode]);
+  useEffect(() => {
+    hitLayerIdsRef.current = hitLayerIds;
+  }, [hitLayerIds]);
+
+  function commitDragEnd(dragState: DragState, ghostPoint: LatLng) {
+    const state = useTripStore.getState();
+    const targetDay = state.trip.days.find((d) => d.id === dragState.dayId);
+    const route = targetDay?.routes[dragState.segIndex];
+    if (!targetDay || !route) return;
+    const from = pointBefore(targetDay, dragState.segIndex);
+    const to = targetDay.steps[dragState.segIndex];
+    const geometry = route.geometry.length >= 2 ? route.geometry : [from, to];
+    const newFraction = projectPointOntoPolyline(geometry, ghostPoint).fraction;
+
+    let insertAt = route.manualWaypoints.length;
+    for (let i = 0; i < route.manualWaypoints.length; i++) {
+      const f = projectPointOntoPolyline(geometry, route.manualWaypoints[i]).fraction;
+      if (newFraction < f) {
+        insertAt = i;
+        break;
+      }
+    }
+    state.insertManualWaypoint(dragState.dayId, dragState.segIndex, insertAt, ghostPoint);
+  }
 
   // ---- initialize the raw maplibre-gl map exactly once ----
   useEffect(() => {
@@ -213,6 +282,51 @@ export default function MapView() {
       setPendingStopPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
 
+    function queryHit(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      try {
+        return map.queryRenderedFeatures(e.point, { layers: hitLayerIdsRef.current })[0];
+      } catch {
+        // A hit layer referenced here may not exist yet right after a route
+        // is added — treat that the same as "nothing under the cursor".
+        return undefined;
+      }
+    }
+
+    function beginDrag(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      const hit = queryHit(e);
+      if (!hit) return;
+      e.preventDefault();
+      map.dragPan.disable();
+      setDragState({
+        dayId: String(hit.properties?.dayId),
+        segIndex: Number(hit.properties?.segIndex),
+      });
+      setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+
+    function onMove(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      if (!dragStateRef.current) return;
+      setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+
+    function endDrag() {
+      const currentDragState = dragStateRef.current;
+      const currentGhostPoint = ghostPointRef.current;
+      map.dragPan.enable();
+      if (currentDragState && currentGhostPoint) {
+        commitDragEnd(currentDragState, currentGhostPoint);
+      }
+      setDragState(null);
+      setGhostPoint(null);
+    }
+
+    map.on("mousedown", beginDrag);
+    map.on("touchstart", beginDrag);
+    map.on("mousemove", onMove);
+    map.on("touchmove", onMove);
+    map.on("mouseup", endDrag);
+    map.on("touchend", endDrag);
+
     return () => {
       wakeTimers.forEach((id) => window.clearTimeout(id));
       window.removeEventListener("resize", wakeUp);
@@ -223,6 +337,8 @@ export default function MapView() {
       Object.values(stepMarkersRef.current).forEach((m) => m.remove());
       startMarkersRef.current = {};
       stepMarkersRef.current = {};
+      viaMarkersRef.current.forEach((m) => m.remove());
+      ghostMarkerRef.current?.remove();
       routeArrowRef.current?.remove();
       gemMarkersRef.current.forEach((m) => m.remove());
       liveMarkerRef.current?.remove();
@@ -236,8 +352,8 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = isAddingNode ? "crosshair" : "";
-  }, [isAddingNode]);
+    map.getCanvas().style.cursor = dragState ? "grabbing" : isAddingNode ? "crosshair" : "";
+  }, [dragState, isAddingNode]);
 
   // ---- fetch/refresh route geometry for each segment as needed ----
   useEffect(() => {
@@ -267,7 +383,13 @@ export default function MapView() {
         return;
       }
 
-      const key = JSON.stringify({ mode: route.mode, from, to, nonce: route.resetNonce });
+      const key = JSON.stringify({
+        mode: route.mode,
+        from,
+        to,
+        via: route.manualWaypoints,
+        nonce: route.resetNonce,
+      });
       if (fetchKeyRef.current.get(segId) === key) return;
       fetchKeyRef.current.set(segId, key);
       retryCountRef.current.set(segId, 0);
@@ -276,7 +398,7 @@ export default function MapView() {
       const controller = new AbortController();
       abortRef.current.set(segId, controller);
 
-      const waypoints = [from, to];
+      const waypoints = [from, ...route.manualWaypoints, to];
       // Retries on failure rather than ever accepting a straight line for a
       // routable segment (walk/drive) as if it were a real OSRM route — but
       // after DEGRADE_AFTER_ATTEMPTS failures (OSRM genuinely down/slow, not
@@ -300,11 +422,16 @@ export default function MapView() {
             const attempts = (retryCountRef.current.get(segId) ?? 0) + 1;
             retryCountRef.current.set(segId, attempts);
             if (attempts === DEGRADE_AFTER_ATTEMPTS) {
-              const distanceM = haversineMeters(from, to);
+              // Straight-line-segments through the user's own via points (if
+              // any) rather than a single from->to line — a drag they made
+              // to bend this route should show up immediately even while
+              // OSRM keeps failing, not wait for a fetch that may never land.
+              let distanceM = 0;
+              for (let w = 1; w < waypoints.length; w++) distanceM += haversineMeters(waypoints[w - 1], waypoints[w]);
               useTripStore.getState().setRouteFound(day.id, i, {
                 distanceM,
                 durationMin: estimateDurationMin(distanceM, route.mode),
-                geometry: [from, to],
+                geometry: waypoints,
                 geometryResolved: false,
                 geometryDegraded: true,
               });
@@ -370,6 +497,7 @@ export default function MapView() {
             return;
           }
 
+          if (map.getLayer(`${srcId}-hit`)) map.removeLayer(`${srcId}-hit`);
           if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
           if (map.getSource(srcId)) map.removeSource(srcId);
 
@@ -393,12 +521,27 @@ export default function MapView() {
               ...(degraded ? { "line-dasharray": [1, 1.5] } : {}),
             },
           });
+          // Wide, invisible hit-test line so a drag started anywhere near the
+          // (thin, precisely-drawn) visible line still grabs it — used by
+          // beginDrag/queryHit above to start bending a route, Edit Mode only
+          // (hitLayerIds is empty outside Edit Mode, so this layer is never
+          // queried against there even though it still exists).
+          if (routable) {
+            map.addLayer({
+              id: `${srcId}-hit`,
+              type: "line",
+              source: srcId,
+              layout: { "line-cap": "round", "line-join": "round" },
+              paint: { "line-color": "#000", "line-width": 24, "line-opacity": 0 },
+            });
+          }
           routeSignaturesRef.current.set(srcId, signature);
         });
       });
 
       for (const [id] of routeSignaturesRef.current) {
         if (!desiredIds.has(id)) {
+          if (map.getLayer(`${id}-hit`)) map.removeLayer(`${id}-hit`);
           if (map.getLayer(`${id}-line`)) map.removeLayer(`${id}-line`);
           if (map.getSource(id)) map.removeSource(id);
           routeSignaturesRef.current.delete(id);
@@ -513,6 +656,65 @@ export default function MapView() {
       delete stepMarkersRef.current[id];
     });
   }, [daysToRender, activeStepId, overviewMode]);
+
+  // ---- draggable manual-waypoint ("via") markers ----
+  // Only for the single active day being edited — overview mode has no one
+  // "current" route to bend, same rationale as hitLayerIds above. Drag and
+  // dblclick-to-remove are both gated on Edit Mode: outside it these render
+  // as plain, non-draggable, non-removable markers so a stray tap or drag
+  // gesture while just browsing can never touch the itinerary.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!day || overviewMode) {
+      viaMarkersRef.current.forEach((m) => m.remove());
+      viaMarkersRef.current = [];
+      return;
+    }
+
+    viaMarkersRef.current.forEach((m) => m.remove());
+    const markers: maplibregl.Marker[] = [];
+    day.steps.forEach((step, i) => {
+      const route = day.routes[i];
+      route.manualWaypoints.forEach((wp, viaIndex) => {
+        const el = createViaMarkerEl();
+        if (isEditMode) {
+          el.addEventListener("dblclick", (ev) => {
+            ev.stopPropagation();
+            useTripStore.getState().removeManualWaypoint(day.id, i, viaIndex);
+          });
+        }
+        const marker = new maplibregl.Marker({ element: el, anchor: "center", draggable: isEditMode })
+          .setLngLat([wp.lng, wp.lat])
+          .addTo(map);
+        if (isEditMode) {
+          marker.on("dragend", () => {
+            const lngLat = marker.getLngLat();
+            useTripStore
+              .getState()
+              .updateManualWaypoint(day.id, i, viaIndex, { lat: lngLat.lat, lng: lngLat.lng });
+          });
+        }
+        markers.push(marker);
+      });
+    });
+    viaMarkersRef.current = markers;
+  }, [day, overviewMode, isEditMode]);
+
+  // ---- ghost preview marker while dragging a new via point onto the route ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!ghostPoint) {
+      ghostMarkerRef.current?.remove();
+      ghostMarkerRef.current = null;
+      return;
+    }
+    if (!ghostMarkerRef.current) {
+      ghostMarkerRef.current = new maplibregl.Marker({ element: createGhostMarkerEl(), anchor: "center" });
+    }
+    ghostMarkerRef.current.setLngLat([ghostPoint.lng, ghostPoint.lat]).addTo(map);
+  }, [ghostPoint]);
 
   // ---- small blinking arrow on the active step's route ----
   // Only for the single active day being viewed — overview mode has no one

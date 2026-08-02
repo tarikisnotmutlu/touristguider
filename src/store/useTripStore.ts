@@ -17,6 +17,8 @@ function makeRoute(from: LatLng, to: LatLng, mode: TransportMode): RouteSegment 
     mode,
     distanceM,
     durationMin: estimateDurationMin(distanceM, mode),
+    isManual: false,
+    manualWaypoints: [],
     geometry: [from, to],
     // Routable modes (walk/drive) need a real OSRM fetch before this
     // placeholder straight line is fit to actually render — see MapView's
@@ -85,6 +87,7 @@ interface TripState {
   addDay: () => void;
   removeDay: (dayId: string) => void;
 
+  setDayLabel: (dayId: string, label: string) => void;
   setDayStartTime: (dayId: string, value: string) => void;
   setDayStartPoint: (dayId: string, point: { name: string; lat: number; lng: number }) => void;
 
@@ -118,6 +121,21 @@ interface TripState {
       geometryDegraded?: boolean;
     }
   ) => void;
+  insertManualWaypoint: (
+    dayId: string,
+    segIndex: number,
+    insertAt: number,
+    point: LatLng
+  ) => void;
+  updateManualWaypoint: (
+    dayId: string,
+    segIndex: number,
+    waypointIndex: number,
+    point: LatLng
+  ) => void;
+  removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
+  resetRouteToAuto: (dayId: string, segIndex: number) => void;
+
   /** Replaces the trip's hidden-gem list wholesale — used by the background
    *  poll that pulls in gems the Game Master placed via the Admin panel. */
   setHiddenGems: (gems: HiddenGem[]) => void;
@@ -239,6 +257,14 @@ export const useTripStore = create<TripState>()(
         state.trip.days.splice(idx, 1);
         state.activeDayIndex = Math.min(state.activeDayIndex, state.trip.days.length - 1);
         state.activeStepId = null;
+      }),
+
+    setDayLabel: (dayId, label) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        if (!day) return;
+        recordHistory(state);
+        day.label = label;
       }),
 
     setDayStartTime: (dayId, value) =>
@@ -408,6 +434,49 @@ export const useTripStore = create<TripState>()(
         route.geometry = info.geometry;
         route.geometryResolved = info.geometryResolved;
         route.geometryDegraded = info.geometryDegraded ?? false;
+        recalcDay(day);
+      }),
+
+    insertManualWaypoint: (dayId, segIndex, insertAt, point) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!route) return;
+        recordHistory(state);
+        route.manualWaypoints.splice(insertAt, 0, point);
+        route.isManual = true;
+      }),
+
+    updateManualWaypoint: (dayId, segIndex, waypointIndex, point) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!route || !route.manualWaypoints[waypointIndex]) return;
+        recordHistory(state);
+        route.manualWaypoints[waypointIndex] = point;
+      }),
+
+    removeManualWaypoint: (dayId, segIndex, waypointIndex) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!route) return;
+        recordHistory(state);
+        route.manualWaypoints.splice(waypointIndex, 1);
+        route.isManual = route.manualWaypoints.length > 0;
+      }),
+
+    resetRouteToAuto: (dayId, segIndex) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const route = day?.routes[segIndex];
+        if (!day || !route) return;
+        recordHistory(state);
+        const from = pointBefore(day, segIndex);
+        const to = day.steps[segIndex];
+        const fresh = makeRoute(from, to, route.mode);
+        fresh.resetNonce = route.resetNonce + 1;
+        day.routes[segIndex] = fresh;
         recalcDay(day);
       }),
 

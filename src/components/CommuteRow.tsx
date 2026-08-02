@@ -14,6 +14,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
   const setSegmentMode = useTripStore((s) => s.setSegmentMode);
   const setTransitLine = useTripStore((s) => s.setTransitLine);
+  const resetRouteToAuto = useTripStore((s) => s.resetRouteToAuto);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const [editingLine, setEditingLine] = useState(false);
   const [lineDraft, setLineDraft] = useState("");
@@ -110,6 +111,15 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
               </button>
             ))}
           </div>
+        )}
+
+        {isEditMode && route.isManual && (
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-terracotta-100 px-2 py-0.5 text-xs text-terracotta-700">
+            ✏️
+            <button type="button" className="underline" onClick={() => resetRouteToAuto(dayId, segIndex)}>
+              reset
+            </button>
+          </span>
         )}
 
         <button

@@ -7,6 +7,7 @@ import PlaceSearch from "./PlaceSearch";
 
 export default function DayStartEditor({ dayId }: { dayId: string }) {
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
+  const setDayLabel = useTripStore((s) => s.setDayLabel);
   const setDayStartTime = useTripStore((s) => s.setDayStartTime);
   const setDayStartPoint = useTripStore((s) => s.setDayStartPoint);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
@@ -16,6 +17,14 @@ export default function DayStartEditor({ dayId }: { dayId: string }) {
 
   return (
     <div className="flex flex-col gap-2 border-b border-stone-200/70 px-3 py-2.5">
+      {isEditMode && (
+        <input
+          value={day.label}
+          onChange={(e) => setDayLabel(day.id, e.target.value)}
+          placeholder="Day name"
+          className="w-full rounded border border-transparent bg-transparent text-base font-bold tracking-tight text-stone-800 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
+        />
+      )}
       <div className="flex items-center gap-2">
         <span className="text-lg leading-none">🕛</span>
         {editingPoint ? (

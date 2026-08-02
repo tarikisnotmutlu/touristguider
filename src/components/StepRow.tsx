@@ -120,11 +120,16 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
           onClick={() => !isEditMode && setActiveStepId(step.id)}
         >
           {isEditMode ? (
+            // basis-full forces this onto its own line in the flex-wrap
+            // row below — sharing a line with the category tag/arrival pill
+            // left an <input> (which can't wrap text like the read-only
+            // span does) squeezed down to whatever space was left over,
+            // truncating any name longer than that.
             <input
               value={step.name}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => updateStep(dayId, step.id, { name: e.target.value })}
-              className="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-800 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
+              className="w-full basis-full rounded border border-transparent bg-transparent text-[17px] font-semibold tracking-tight text-stone-800 hover:border-stone-200 focus:border-sage-400 focus:outline-none"
             />
           ) : (
             <span
