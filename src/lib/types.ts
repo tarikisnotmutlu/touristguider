@@ -40,10 +40,6 @@ export interface RouteSegment {
   distanceM: number | null;
   /** Minutes. Null until an estimate/route has been computed at least once. */
   durationMin: number | null;
-  /** True once the user has dragged the route line to add custom waypoints. */
-  isManual: boolean;
-  /** Via points the user dragged in, in order, between the segment's two endpoints. */
-  manualWaypoints: LatLng[];
   /** Last known route geometry, kept for non-routable (transit) segments. */
   geometry: LatLng[];
   /** True once `geometry` reflects a real OSRM street-hugging fetch for this
@@ -53,7 +49,14 @@ export interface RouteSegment {
    *  rather than a straight-line placeholder — see MapView's route-sync
    *  effect. */
   geometryResolved: boolean;
-  /** Bumped to force the map layer to rebuild from scratch (used by "reset to auto"). */
+  /** True once MapView's fetch effect has given up retrying OSRM for now
+   *  (still retrying in the background) and written a straight-line
+   *  distance estimate instead of leaving the segment a permanent gap.
+   *  Rendered in a visually distinct "degraded" style so it's never
+   *  mistaken for a real, OSRM-resolved route. */
+  geometryDegraded?: boolean;
+  /** Bumped to force the map layer to rebuild from scratch (used when the
+   *  segment's transport mode changes). */
   resetNonce: number;
   /** User-entered line/route name for a "transit" segment, e.g. "M2 Metro to Taksim". */
   transitLine?: string;

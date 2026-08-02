@@ -17,8 +17,6 @@ function makeRoute(from: LatLng, to: LatLng, mode: TransportMode): RouteSegment 
     mode,
     distanceM,
     durationMin: estimateDurationMin(distanceM, mode),
-    isManual: false,
-    manualWaypoints: [],
     geometry: [from, to],
     // Routable modes (walk/drive) need a real OSRM fetch before this
     // placeholder straight line is fit to actually render — see MapView's
@@ -30,8 +28,8 @@ function makeRoute(from: LatLng, to: LatLng, mode: TransportMode): RouteSegment 
 }
 
 /** Rebuilds routes[] to match steps[] 1:1, preserving each segment's chosen mode by
- *  matching on the destination step's id, but always dropping manual waypoints since
- *  a structural change (add/remove/reorder) means the two endpoints may have changed. */
+ *  matching on the destination step's id — a structural change (add/remove/reorder)
+ *  means the two endpoints may have changed, so every segment gets a fresh route. */
 function rebuildRoutes(day: Day): RouteSegment[] {
   const oldByToStepId = new Map(day.steps.map((s, i) => [s.id, day.routes[i]]));
   return day.steps.map((step, i) => {
@@ -112,23 +110,14 @@ interface TripState {
   setRouteFound: (
     dayId: string,
     segIndex: number,
-    info: { distanceM: number; durationMin: number; geometry: LatLng[]; geometryResolved: boolean }
+    info: {
+      distanceM: number;
+      durationMin: number;
+      geometry: LatLng[];
+      geometryResolved: boolean;
+      geometryDegraded?: boolean;
+    }
   ) => void;
-  insertManualWaypoint: (
-    dayId: string,
-    segIndex: number,
-    insertAt: number,
-    point: LatLng
-  ) => void;
-  updateManualWaypoint: (
-    dayId: string,
-    segIndex: number,
-    waypointIndex: number,
-    point: LatLng
-  ) => void;
-  removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
-  resetRouteToAuto: (dayId: string, segIndex: number) => void;
-
   /** Replaces the trip's hidden-gem list wholesale — used by the background
    *  poll that pulls in gems the Game Master placed via the Admin panel. */
   setHiddenGems: (gems: HiddenGem[]) => void;
@@ -418,49 +407,7 @@ export const useTripStore = create<TripState>()(
         route.durationMin = info.durationMin;
         route.geometry = info.geometry;
         route.geometryResolved = info.geometryResolved;
-        recalcDay(day);
-      }),
-
-    insertManualWaypoint: (dayId, segIndex, insertAt, point) =>
-      set((state) => {
-        const { day } = findDay(state.trip, dayId);
-        const route = day?.routes[segIndex];
-        if (!route) return;
-        recordHistory(state);
-        route.manualWaypoints.splice(insertAt, 0, point);
-        route.isManual = true;
-      }),
-
-    updateManualWaypoint: (dayId, segIndex, waypointIndex, point) =>
-      set((state) => {
-        const { day } = findDay(state.trip, dayId);
-        const route = day?.routes[segIndex];
-        if (!route || !route.manualWaypoints[waypointIndex]) return;
-        recordHistory(state);
-        route.manualWaypoints[waypointIndex] = point;
-      }),
-
-    removeManualWaypoint: (dayId, segIndex, waypointIndex) =>
-      set((state) => {
-        const { day } = findDay(state.trip, dayId);
-        const route = day?.routes[segIndex];
-        if (!route) return;
-        recordHistory(state);
-        route.manualWaypoints.splice(waypointIndex, 1);
-        route.isManual = route.manualWaypoints.length > 0;
-      }),
-
-    resetRouteToAuto: (dayId, segIndex) =>
-      set((state) => {
-        const { day } = findDay(state.trip, dayId);
-        const route = day?.routes[segIndex];
-        if (!day || !route) return;
-        recordHistory(state);
-        const from = pointBefore(day, segIndex);
-        const to = day.steps[segIndex];
-        const fresh = makeRoute(from, to, route.mode);
-        fresh.resetNonce = route.resetNonce + 1;
-        day.routes[segIndex] = fresh;
+        route.geometryDegraded = info.geometryDegraded ?? false;
         recalcDay(day);
       }),
 

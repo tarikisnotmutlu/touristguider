@@ -14,7 +14,6 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
   const day = useTripStore((s) => s.trip.days.find((d) => d.id === dayId));
   const setSegmentMode = useTripStore((s) => s.setSegmentMode);
   const setTransitLine = useTripStore((s) => s.setTransitLine);
-  const resetRouteToAuto = useTripStore((s) => s.resetRouteToAuto);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const [editingLine, setEditingLine] = useState(false);
   const [lineDraft, setLineDraft] = useState("");
@@ -42,7 +41,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
       <div className="flex justify-center">
         <div className="border-l-2 border-dashed border-stone-300" style={{ minHeight: 28 }} />
       </div>
-      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto py-1.5">
+      <div className="flex flex-wrap items-center gap-2 py-1.5">
         <div className="flex shrink-0 items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700">
           <span className="text-xs">{TRANSPORT_ICON[route.mode]}</span>
           <span>
@@ -111,15 +110,6 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
               </button>
             ))}
           </div>
-        )}
-
-        {isEditMode && route.isManual && (
-          <span className="flex shrink-0 items-center gap-1 rounded-full bg-terracotta-100 px-2 py-0.5 text-xs text-terracotta-700">
-            ✏️
-            <button type="button" className="underline" onClick={() => resetRouteToAuto(dayId, segIndex)}>
-              reset
-            </button>
-          </span>
         )}
 
         <button

@@ -22,7 +22,6 @@ function normalizeRoute(route: RouteSegment): RouteSegment {
   return {
     ...route,
     mode,
-    manualWaypoints: route.manualWaypoints ?? [],
     geometry,
     // Trips saved before this field existed: transit/ferry never had an
     // OSRM fetch to wait for, so their straight line was always the final

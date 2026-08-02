@@ -64,15 +64,17 @@ export function updateStartMarkerEl(el: HTMLDivElement, colorOverride?: string):
   el.style.borderColor = colorOverride ?? START_MARKER_DEFAULT_BORDER;
 }
 
-export function createViaMarkerEl(): HTMLDivElement {
+/** Small chevron pointing along the active step's route, slowly pulsing —
+ *  replaces the old draggable via-point markers as the "here's your current
+ *  leg" indicator now that routes are OSRM-only and no longer manually
+ *  editable. `bearingDeg` is the direction of travel (0 = north, clockwise),
+ *  applied as a CSS rotation since MapLibre markers don't rotate themselves. */
+export function createRouteArrowEl(bearingDeg: number): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "tg-via-marker";
-  return el;
-}
-
-export function createGhostMarkerEl(): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = "tg-ghost-marker";
+  el.className = "tg-route-arrow";
+  el.style.transform = `rotate(${bearingDeg}deg)`;
+  el.innerHTML =
+    '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="currentColor" /></svg>';
   return el;
 }
 

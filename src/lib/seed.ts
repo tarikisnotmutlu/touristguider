@@ -49,8 +49,6 @@ function makeSeedRoute(from: { lat: number; lng: number }, to: { lat: number; ln
     mode,
     distanceM,
     durationMin: estimateDurationMin(distanceM, mode),
-    isManual: false,
-    manualWaypoints: [],
     geometry: [from, to],
     // Walk/drive legs get their real geometry from MapView's OSRM fetch on
     // first render, same as any freshly-created route — see makeRoute() in

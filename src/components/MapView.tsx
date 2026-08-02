@@ -6,18 +6,17 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
-import { ROUTABLE_MODES, type LatLng } from "@/lib/types";
+import { ROUTABLE_MODES, type LatLng, type TransportMode } from "@/lib/types";
 import { pointBefore } from "@/lib/dayHelpers";
 import { fetchRoute } from "@/lib/osrmHttp";
-import { boundsOf, estimateDurationMin, haversineMeters, projectPointOntoPolyline } from "@/lib/geo";
+import { bearingDegrees, boundsOf, estimateDurationMin, haversineMeters } from "@/lib/geo";
 import { dayColor } from "@/lib/dayColors";
 import {
   createStepMarkerEl,
   updateStepMarkerEl,
   createStartMarkerEl,
   updateStartMarkerEl,
-  createViaMarkerEl,
-  createGhostMarkerEl,
+  createRouteArrowEl,
   createGemMarkerEl,
   createLiveLocationMarkerEl,
 } from "./MapMarkers";
@@ -25,6 +24,10 @@ import AddStopPinForm from "./AddStopPinForm";
 
 // Istanbul, used only as a fallback center before any trip data has loaded.
 const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
+
+// ~12s of failed OSRM attempts (4s apart) before a segment gives up waiting
+// and shows a clearly-marked straight-line estimate instead of a permanent gap.
+const DEGRADE_AFTER_ATTEMPTS = 3;
 
 // MapLibre spins up its tile-parsing worker via `new Worker(new URL(...,
 // import.meta.url))` inside its own bundled module — Turbopack doesn't
@@ -46,6 +49,19 @@ if (typeof window !== "undefined") {
 function lineSourceId(dayId: string, segIndex: number) {
   return `route-${dayId}-${segIndex}`;
 }
+
+// One distinct dash pattern per transport mode so a route's line reads its
+// mode at a glance, independent of the day color used for the line itself.
+const LINE_DASH_BY_MODE: Record<TransportMode, { "line-dasharray"?: number[] }> = {
+  // Tight dots — a "footsteps" texture.
+  walk: { "line-dasharray": [0.3, 1.8] },
+  // Solid — driving is the only mode with an unbroken line.
+  drive: {},
+  // Medium dashes, evenly spaced — reads as a scheduled service.
+  transit: { "line-dasharray": [2, 1.5] },
+  // Long dashes with wide gaps — visually the "sparsest" of the four.
+  ferry: { "line-dasharray": [1, 3] },
+};
 
 function toGeoJSONLine(
   coords: LatLng[],
@@ -81,11 +97,6 @@ function scrollToStepCard(stepId: string) {
   }, 350);
 }
 
-interface DragState {
-  dayId: string;
-  segIndex: number;
-}
-
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -94,17 +105,10 @@ export default function MapView() {
   // intentional StrictMode-double-mount lock, not just a null check.
   const isMapInitialized = useRef(false);
   const [ready, setReady] = useState(false);
-  const [dragState, setDragState] = useState<DragState | null>(null);
-  const [ghostPoint, setGhostPoint] = useState<LatLng | null>(null);
   const [pendingStopPoint, setPendingStopPoint] = useState<LatLng | null>(null);
 
-  // Mirrors of state read inside stable (bound-once) map event handlers,
-  // which otherwise close over stale values.
-  const dragStateRef = useRef(dragState);
-  const ghostPointRef = useRef(ghostPoint);
-  const hitLayerIdsRef = useRef<string[]>([]);
-
   const fetchKeyRef = useRef(new Map<string, string>());
+  const retryCountRef = useRef(new Map<string, number>());
   const abortRef = useRef(new Map<string, AbortController>());
   const fitDayIdRef = useRef<string | null>(null);
   const routeSignaturesRef = useRef(new Map<string, string>());
@@ -116,8 +120,7 @@ export default function MapView() {
   // markers whenever a single step was toggled done.
   const startMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
   const stepMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
-  const viaMarkersRef = useRef<maplibregl.Marker[]>([]);
-  const ghostMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const routeArrowRef = useRef<maplibregl.Marker | null>(null);
   const gemMarkersRef = useRef<maplibregl.Marker[]>([]);
   const liveMarkerRef = useRef<maplibregl.Marker | null>(null);
 
@@ -139,50 +142,6 @@ export default function MapView() {
     () => (overviewMode ? trip.days.map((d, i) => ({ day: d, index: i })) : day ? [{ day, index: activeDayIndex }] : []),
     [overviewMode, trip.days, day, activeDayIndex]
   );
-
-  useEffect(() => {
-    dragStateRef.current = dragState;
-  }, [dragState]);
-  useEffect(() => {
-    ghostPointRef.current = ghostPoint;
-  }, [ghostPoint]);
-
-  const hitLayerIds = useMemo(() => {
-    // Manual-waypoint dragging only makes sense for a single active day's
-    // route being edited — disabled in overview mode (no single "current"
-    // route to bend) and, per the strict view/edit split, disabled entirely
-    // outside Edit Mode so an accidental drag on the map can never mutate
-    // the itinerary while just browsing.
-    if (!day || overviewMode || !isEditMode) return [];
-    return day.steps
-      .map((_, i) => ({ i, mode: day.routes[i]?.mode }))
-      .filter(({ mode }) => mode && ROUTABLE_MODES.includes(mode))
-      .map(({ i }) => `${lineSourceId(day.id, i)}-hit`);
-  }, [day, overviewMode, isEditMode]);
-  useEffect(() => {
-    hitLayerIdsRef.current = hitLayerIds;
-  }, [hitLayerIds]);
-
-  function commitDragEnd(dragState: DragState, ghostPoint: LatLng) {
-    const state = useTripStore.getState();
-    const targetDay = state.trip.days.find((d) => d.id === dragState.dayId);
-    const route = targetDay?.routes[dragState.segIndex];
-    if (!targetDay || !route) return;
-    const from = pointBefore(targetDay, dragState.segIndex);
-    const to = targetDay.steps[dragState.segIndex];
-    const geometry = route.geometry.length >= 2 ? route.geometry : [from, to];
-    const newFraction = projectPointOntoPolyline(geometry, ghostPoint).fraction;
-
-    let insertAt = route.manualWaypoints.length;
-    for (let i = 0; i < route.manualWaypoints.length; i++) {
-      const f = projectPointOntoPolyline(geometry, route.manualWaypoints[i]).fraction;
-      if (newFraction < f) {
-        insertAt = i;
-        break;
-      }
-    }
-    state.insertManualWaypoint(dragState.dayId, dragState.segIndex, insertAt, ghostPoint);
-  }
 
   // ---- initialize the raw maplibre-gl map exactly once ----
   useEffect(() => {
@@ -254,51 +213,6 @@ export default function MapView() {
       setPendingStopPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
 
-    function queryHit(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
-      try {
-        return map.queryRenderedFeatures(e.point, { layers: hitLayerIdsRef.current })[0];
-      } catch {
-        // A hit layer referenced here may not exist yet right after a route
-        // is added — treat that the same as "nothing under the cursor".
-        return undefined;
-      }
-    }
-
-    function beginDrag(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
-      const hit = queryHit(e);
-      if (!hit) return;
-      e.preventDefault();
-      map.dragPan.disable();
-      setDragState({
-        dayId: String(hit.properties?.dayId),
-        segIndex: Number(hit.properties?.segIndex),
-      });
-      setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-    }
-
-    function onMove(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
-      if (!dragStateRef.current) return;
-      setGhostPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-    }
-
-    function endDrag() {
-      const currentDragState = dragStateRef.current;
-      const currentGhostPoint = ghostPointRef.current;
-      map.dragPan.enable();
-      if (currentDragState && currentGhostPoint) {
-        commitDragEnd(currentDragState, currentGhostPoint);
-      }
-      setDragState(null);
-      setGhostPoint(null);
-    }
-
-    map.on("mousedown", beginDrag);
-    map.on("touchstart", beginDrag);
-    map.on("mousemove", onMove);
-    map.on("touchmove", onMove);
-    map.on("mouseup", endDrag);
-    map.on("touchend", endDrag);
-
     return () => {
       wakeTimers.forEach((id) => window.clearTimeout(id));
       window.removeEventListener("resize", wakeUp);
@@ -309,8 +223,7 @@ export default function MapView() {
       Object.values(stepMarkersRef.current).forEach((m) => m.remove());
       startMarkersRef.current = {};
       stepMarkersRef.current = {};
-      viaMarkersRef.current.forEach((m) => m.remove());
-      ghostMarkerRef.current?.remove();
+      routeArrowRef.current?.remove();
       gemMarkersRef.current.forEach((m) => m.remove());
       liveMarkerRef.current?.remove();
       map.remove();
@@ -323,8 +236,8 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = dragState ? "grabbing" : isAddingNode ? "crosshair" : "";
-  }, [dragState, isAddingNode]);
+    map.getCanvas().style.cursor = isAddingNode ? "crosshair" : "";
+  }, [isAddingNode]);
 
   // ---- fetch/refresh route geometry for each segment as needed ----
   useEffect(() => {
@@ -336,7 +249,10 @@ export default function MapView() {
       const segId = `${day.id}:${i}`;
 
       if (!ROUTABLE_MODES.includes(route.mode)) {
-        const key = `transit:${from.lat},${from.lng}:${to.lat},${to.lng}`;
+        // Mode is part of this key too — transit and ferry both land here,
+        // and switching between them needs a fresh duration estimate even
+        // though from/to don't change (they have different average speeds).
+        const key = `${route.mode}:${from.lat},${from.lng}:${to.lat},${to.lng}`;
         if (fetchKeyRef.current.get(segId) !== key) {
           fetchKeyRef.current.set(segId, key);
           const distanceM = haversineMeters(from, to);
@@ -345,39 +261,54 @@ export default function MapView() {
             durationMin: estimateDurationMin(distanceM, route.mode),
             geometry: [from, to],
             geometryResolved: true,
+            geometryDegraded: false,
           });
         }
         return;
       }
 
-      const key = JSON.stringify({
-        mode: route.mode,
-        from,
-        to,
-        via: route.manualWaypoints,
-        nonce: route.resetNonce,
-      });
+      const key = JSON.stringify({ mode: route.mode, from, to, nonce: route.resetNonce });
       if (fetchKeyRef.current.get(segId) === key) return;
       fetchKeyRef.current.set(segId, key);
+      retryCountRef.current.set(segId, 0);
 
       abortRef.current.get(segId)?.abort();
       const controller = new AbortController();
       abortRef.current.set(segId, controller);
 
-      const waypoints = [from, ...route.manualWaypoints, to];
+      const waypoints = [from, to];
       // Retries on failure rather than ever accepting a straight line for a
-      // routable segment (walk/drive) — this segment's map line simply stays
-      // unresolved (rendered as a gap, not a wrong straight line — see the
-      // route-sync effect below) until either OSRM succeeds or this fetch is
-      // superseded (aborted) by a newer one for the same segment.
+      // routable segment (walk/drive) as if it were a real OSRM route — but
+      // after DEGRADE_AFTER_ATTEMPTS failures (OSRM genuinely down/slow, not
+      // just one dropped request), it writes the straight-line distance as a
+      // clearly-marked "degraded" estimate instead of leaving the segment a
+      // permanent gap — see the route-sync effect's `degraded` styling.
+      // Retries keep going in the background regardless, so a real route
+      // silently replaces the estimate the moment OSRM comes back.
       function attempt() {
         fetchRoute(waypoints, route.mode, controller.signal)
           .then((result) => {
             if (controller.signal.aborted) return;
-            useTripStore.getState().setRouteFound(day.id, i, { ...result, geometryResolved: true });
+            useTripStore.getState().setRouteFound(day.id, i, {
+              ...result,
+              geometryResolved: true,
+              geometryDegraded: false,
+            });
           })
           .catch(() => {
             if (controller.signal.aborted) return;
+            const attempts = (retryCountRef.current.get(segId) ?? 0) + 1;
+            retryCountRef.current.set(segId, attempts);
+            if (attempts === DEGRADE_AFTER_ATTEMPTS) {
+              const distanceM = haversineMeters(from, to);
+              useTripStore.getState().setRouteFound(day.id, i, {
+                distanceM,
+                durationMin: estimateDurationMin(distanceM, route.mode),
+                geometry: [from, to],
+                geometryResolved: false,
+                geometryDegraded: true,
+              });
+            }
             window.setTimeout(attempt, 4000);
           });
       }
@@ -404,13 +335,17 @@ export default function MapView() {
           const to: LatLng = { lat: step.lat, lng: step.lng };
           const srcId = lineSourceId(day.id, i);
           const routable = ROUTABLE_MODES.includes(route.mode);
+          const degraded = routable && !route.geometryResolved && !!route.geometryDegraded;
 
           // A routable segment whose geometry hasn't been OSRM-resolved yet
-          // (just added/reordered, fetch still in flight or retrying) is
-          // left out of desiredIds entirely — the cleanup pass below then
-          // strips any stale line for it, so this segment briefly renders
-          // as a gap rather than a straight line cutting across the map.
-          if (routable && !route.geometryResolved) return;
+          // (just added/reordered, fetch still in flight) is left out of
+          // desiredIds entirely — the cleanup pass below then strips any
+          // stale line for it, so this segment briefly renders as a gap
+          // rather than a straight line cutting across the map. Once the
+          // fetch effect gives up retrying (see geometryDegraded), it's
+          // rendered anyway using the degraded style below rather than
+          // staying a gap forever.
+          if (routable && !route.geometryResolved && !degraded) return;
 
           desiredIds.add(srcId);
 
@@ -421,7 +356,10 @@ export default function MapView() {
           // no per-property update call, needed just to fade a finished leg.
           const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i, isCompleted: step.completed });
           const color = dayColor(index);
-          const signature = route.mode;
+          // Degraded-ness is part of the signature too — resolving for real
+          // (or giving up and degrading) needs the layer rebuilt with new
+          // paint, not just a setData on the existing one.
+          const signature = `${route.mode}:${degraded}`;
 
           const existingSource = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
           if (existingSource && routeSignaturesRef.current.get(srcId) === signature) {
@@ -432,7 +370,6 @@ export default function MapView() {
             return;
           }
 
-          if (map.getLayer(`${srcId}-hit`)) map.removeLayer(`${srcId}-hit`);
           if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
           if (map.getSource(srcId)) map.removeSource(srcId);
 
@@ -444,37 +381,24 @@ export default function MapView() {
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
               "line-color": color,
-              "line-width": 5,
+              "line-width": degraded ? 3 : 5,
               // Data-driven so a done-toggle just needs setData (above) to
               // fade the segment — a finished leg recedes the same way a
-              // completed card/marker does elsewhere in the app.
-              "line-opacity": ["case", ["==", ["get", "isCompleted"], true], 0.3, 0.85],
-              ...(route.mode === "walk"
-                ? // A tight dotted pattern reads as a distinct "walking path"
-                  // texture, independent of the day-color used for the line
-                  // itself — drive stays a plain solid line.
-                  { "line-dasharray": [0.3, 1.8] }
-                : routable
-                  ? {}
-                  : { "line-dasharray": [1, 2] }),
+              // completed card/marker does elsewhere in the app. A degraded
+              // (OSRM-never-responded) line is faded further and thinner
+              // regardless of completion, so it never reads as a confident,
+              // real route — see the fetch effect's retry/give-up logic.
+              "line-opacity": degraded ? 0.4 : ["case", ["==", ["get", "isCompleted"], true], 0.3, 0.85],
+              ...LINE_DASH_BY_MODE[route.mode],
+              ...(degraded ? { "line-dasharray": [1, 1.5] } : {}),
             },
           });
-          if (routable) {
-            map.addLayer({
-              id: `${srcId}-hit`,
-              type: "line",
-              source: srcId,
-              layout: { "line-cap": "round", "line-join": "round" },
-              paint: { "line-color": "#000", "line-width": 24, "line-opacity": 0 },
-            });
-          }
           routeSignaturesRef.current.set(srcId, signature);
         });
       });
 
       for (const [id] of routeSignaturesRef.current) {
         if (!desiredIds.has(id)) {
-          if (map.getLayer(`${id}-hit`)) map.removeLayer(`${id}-hit`);
           if (map.getLayer(`${id}-line`)) map.removeLayer(`${id}-line`);
           if (map.getSource(id)) map.removeSource(id);
           routeSignaturesRef.current.delete(id);
@@ -590,64 +514,37 @@ export default function MapView() {
     });
   }, [daysToRender, activeStepId, overviewMode]);
 
-  // ---- draggable manual-waypoint ("via") markers ----
-  // Only for the single active day being edited — overview mode has no one
-  // "current" route to bend, same rationale as hitLayerIds above. Drag and
-  // dblclick-to-remove are both gated on Edit Mode: outside it these render
-  // as plain, non-draggable, non-removable markers so a stray tap or drag
-  // gesture while just browsing can never touch the itinerary.
+  // ---- small blinking arrow on the active step's route ----
+  // Only for the single active day being viewed — overview mode has no one
+  // "current" leg to point at, same rationale as the old hit-testing above.
+  // Placed at the geometric midpoint of the resolved route geometry (not the
+  // crude midpoint of the two endpoints), so it actually sits on the curved
+  // path rather than floating off to one side of a bend.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (!day || overviewMode) {
-      viaMarkersRef.current.forEach((m) => m.remove());
-      viaMarkersRef.current = [];
+
+    const stepIndex = day && !overviewMode ? day.steps.findIndex((s) => s.id === activeStepId) : -1;
+    if (stepIndex === -1 || !day) {
+      routeArrowRef.current?.remove();
+      routeArrowRef.current = null;
       return;
     }
 
-    viaMarkersRef.current.forEach((m) => m.remove());
-    const markers: maplibregl.Marker[] = [];
-    day.steps.forEach((step, i) => {
-      const route = day.routes[i];
-      route.manualWaypoints.forEach((wp, viaIndex) => {
-        const el = createViaMarkerEl();
-        if (isEditMode) {
-          el.addEventListener("dblclick", (ev) => {
-            ev.stopPropagation();
-            useTripStore.getState().removeManualWaypoint(day.id, i, viaIndex);
-          });
-        }
-        const marker = new maplibregl.Marker({ element: el, anchor: "center", draggable: isEditMode })
-          .setLngLat([wp.lng, wp.lat])
-          .addTo(map);
-        if (isEditMode) {
-          marker.on("dragend", () => {
-            const lngLat = marker.getLngLat();
-            useTripStore
-              .getState()
-              .updateManualWaypoint(day.id, i, viaIndex, { lat: lngLat.lat, lng: lngLat.lng });
-          });
-        }
-        markers.push(marker);
-      });
-    });
-    viaMarkersRef.current = markers;
-  }, [day, overviewMode, isEditMode]);
+    const route = day.routes[stepIndex];
+    const from = pointBefore(day, stepIndex);
+    const to: LatLng = { lat: day.steps[stepIndex].lat, lng: day.steps[stepIndex].lng };
+    const geometry = route.geometry.length >= 2 ? route.geometry : [from, to];
+    const midIndex = Math.min(geometry.length - 1, Math.floor(geometry.length / 2));
+    const point = geometry[midIndex];
+    const next = geometry[Math.min(geometry.length - 1, midIndex + 1)];
+    const bearing = bearingDegrees(point, next.lat === point.lat && next.lng === point.lng ? to : next);
 
-  // ---- ghost preview marker while dragging a new via point onto the route ----
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (!ghostPoint) {
-      ghostMarkerRef.current?.remove();
-      ghostMarkerRef.current = null;
-      return;
-    }
-    if (!ghostMarkerRef.current) {
-      ghostMarkerRef.current = new maplibregl.Marker({ element: createGhostMarkerEl(), anchor: "center" });
-    }
-    ghostMarkerRef.current.setLngLat([ghostPoint.lng, ghostPoint.lat]).addTo(map);
-  }, [ghostPoint]);
+    routeArrowRef.current?.remove();
+    routeArrowRef.current = new maplibregl.Marker({ element: createRouteArrowEl(bearing), anchor: "center" })
+      .setLngLat([point.lng, point.lat])
+      .addTo(map);
+  }, [day, overviewMode, activeStepId]);
 
   // ---- hidden gem markers ----
   useEffect(() => {
