@@ -27,11 +27,11 @@ export default function MobileSheet() {
         onClick={() => setSheetExpanded(!isExpanded)}
         type="button"
         aria-label={isExpanded ? "Collapse sheet" : "Expand sheet"}
-        className="flex shrink-0 items-center justify-center py-2.5"
+        className="flex shrink-0 items-center justify-center py-2.5 opacity-60"
       >
         <svg
           viewBox="0 0 24 24"
-          className="h-5 w-5 fill-none stroke-stone-400 stroke-2"
+          className="h-5 w-5 fill-none stroke-stone-300 stroke-2"
           style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.3s ease" }}
         >
           <path d="M6 15l6-6 6 6" strokeLinecap="round" strokeLinejoin="round" />

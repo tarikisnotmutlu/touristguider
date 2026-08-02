@@ -200,7 +200,7 @@ export default function HiddenGemStudio() {
         {loadError && <p className="text-[11px] text-terracotta-600">{loadError}</p>}
         {trip && (
           <p className="text-[11px] text-stone-400">
-            {trip.title} · {trip.hiddenGems.length} gem{trip.hiddenGems.length === 1 ? "" : "s"}
+            {trip.title} · {trip.hiddenGems.length} feature{trip.hiddenGems.length === 1 ? "" : "s"}
             {saving ? " · saving…" : ""}
           </p>
         )}
@@ -215,13 +215,13 @@ export default function HiddenGemStudio() {
             (dropMode ? "ring-2 ring-terracotta-400 text-terracotta-700" : "text-stone-600 hover:text-stone-900")
           }
         >
-          ✨ {dropMode ? "Click the map to drop it…" : "Drop Hidden Gem"}
+          ✨ {dropMode ? "Click the map to drop it…" : "Drop Hidden Feature"}
         </button>
       )}
 
       {!trip && !loading && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-400">
-          Load a trip by id to manage its hidden gems.
+          Load a trip by id to manage its hidden features.
         </div>
       )}
 
@@ -297,7 +297,7 @@ function GemCreateForm({
         transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
         className="glass-panel absolute right-4 top-20 z-20 w-80 rounded-2xl p-4 shadow-xl"
       >
-        <h3 className="text-sm font-semibold tracking-tight text-stone-800">✨ New hidden gem</h3>
+        <h3 className="text-sm font-semibold tracking-tight text-stone-800">✨ New hidden feature</h3>
         <p className="mt-0.5 text-[11px] text-stone-400">
           {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
         </p>
@@ -359,7 +359,7 @@ function GemCreateForm({
             disabled={!canSave}
             className="rounded-full bg-terracotta-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-terracotta-700 disabled:opacity-40"
           >
-            Save gem
+            Save feature
           </button>
         </div>
       </motion.form>
@@ -382,7 +382,7 @@ function GemDetailPanel({ gem, onClose, onDelete }: { gem: HiddenGem; onClose: (
           <img src={gem.imageBase64 ?? gem.imageUrl} alt="" className="h-32 w-full object-cover" />
         )}
         <div className="p-4">
-          <h3 className="text-sm font-semibold tracking-tight text-stone-800">{gem.name || "Untitled gem"}</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-stone-800">{gem.name || "Untitled feature"}</h3>
           <p className="mt-0.5 text-[11px] text-stone-400">
             {gem.lat.toFixed(5)}, {gem.lng.toFixed(5)} · {gem.geoLocked ? `🔒 ${gem.radiusM ?? 20}m` : "not geo-locked"}
           </p>
@@ -396,7 +396,7 @@ function GemDetailPanel({ gem, onClose, onDelete }: { gem: HiddenGem; onClose: (
               type="button"
               className="rounded-full bg-terracotta-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-terracotta-700"
             >
-              Delete gem
+              Delete feature
             </button>
           </div>
         </div>

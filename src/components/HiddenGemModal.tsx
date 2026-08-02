@@ -160,7 +160,7 @@ function GemUnlockReveal({
               >
                 ✨
               </motion.div>
-              <h3 className="mt-3 text-xl font-bold tracking-tight text-stone-800">Hidden Gem Unlocked!</h3>
+              <h3 className="mt-3 text-xl font-bold tracking-tight text-stone-800">Hidden Feature Unlocked!</h3>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-stone-600">{note}</p>
               <button
                 onClick={onClose}

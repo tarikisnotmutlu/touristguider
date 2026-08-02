@@ -280,6 +280,16 @@ export const useJourneyStore = create<JourneyState>()(
                 gmMessage: message,
               };
             }
+            case "reset_stats":
+              return {
+                hunger: 100,
+                thirst: 100,
+                fatigue: 0,
+                catsPetted: 0,
+                lastCatMilestone: null,
+                lastUpdatedTimestamp: Date.now(),
+                gmMessage: message,
+              };
             default:
               return {};
           }

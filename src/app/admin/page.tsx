@@ -6,6 +6,7 @@ import { GM_ACTION_LABEL, type GmAction, type PlayerTelemetry } from "@/lib/tele
 
 const AdminLiveMap = dynamic(() => import("@/components/admin/AdminLiveMap"), { ssr: false });
 const HiddenGemStudio = dynamic(() => import("@/components/admin/HiddenGemStudio"), { ssr: false });
+const AdminRouteMap = dynamic(() => import("@/components/admin/AdminRouteMap"), { ssr: false });
 
 const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue"];
 const POLL_MS = 8000;
@@ -127,13 +128,14 @@ function PinGate({ onAuthed }: { onAuthed: () => void }) {
   );
 }
 
-type AdminTab = "gm" | "gems";
+type AdminTab = "gm" | "gems" | "routes";
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [tab, setTab] = useState<AdminTab>("gm");
   const [players, setPlayers] = useState<PlayerTelemetry[]>([]);
   const [pendingPlayerId, setPendingPlayerId] = useState<string | null>(null);
+  const [resettingAll, setResettingAll] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchPlayers = useCallback(async () => {
@@ -186,6 +188,31 @@ export default function AdminPage() {
     }
   }
 
+  /** Every traveler's hunger/thirst/fatigue/cat count lives only in their own
+   *  phone's localStorage (never synced to the trip itself), so there's no
+   *  single place to reset them from — this queues the same reset_stats
+   *  override onto every currently known player, reusing the exact delivery
+   *  path (~15s poll) each of the per-card actions already uses. */
+  async function handleResetAllStats() {
+    const action: GmAction = "reset_stats";
+    setResettingAll(true);
+    try {
+      await Promise.all(
+        players.map((p) =>
+          fetch(`/api/sync/overrides/${p.playerId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action }),
+          }).catch(() => {
+            // Best-effort — a missed player just keeps their current stats.
+          })
+        )
+      );
+    } finally {
+      setResettingAll(false);
+    }
+  }
+
   if (authed === null) {
     return (
       <div className="flex h-dvh w-full items-center justify-center bg-stone-50 text-stone-400">Loading…</div>
@@ -203,7 +230,10 @@ export default function AdminPage() {
           🎩 Game Master
         </TabButton>
         <TabButton active={tab === "gems"} onClick={() => setTab("gems")}>
-          ✨ Hidden Gem Studio
+          ✨ Hidden Feature Studio
+        </TabButton>
+        <TabButton active={tab === "routes"} onClick={() => setTab("routes")}>
+          🗺️ Route Map
         </TabButton>
       </div>
 
@@ -213,9 +243,20 @@ export default function AdminPage() {
             <AdminLiveMap players={players} />
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-2">
               <h1 className="text-lg font-bold tracking-tight text-stone-800">🎩 Game Master Dashboard</h1>
-              <span className="text-xs text-stone-400">{players.length} traveler{players.length === 1 ? "" : "s"}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-stone-400">{players.length} traveler{players.length === 1 ? "" : "s"}</span>
+                <button
+                  onClick={handleResetAllStats}
+                  disabled={resettingAll || players.length === 0}
+                  type="button"
+                  title="Reset hunger, thirst, fatigue, and cat count for every traveler"
+                  className="rounded-full bg-terracotta-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-terracotta-700 disabled:opacity-40"
+                >
+                  {resettingAll ? "Resetting…" : "🔄 Reset All Stats"}
+                </button>
+              </div>
             </div>
             {players.length === 0 ? (
               <p className="text-sm text-stone-400">No travelers checked in yet.</p>
@@ -234,9 +275,13 @@ export default function AdminPage() {
             )}
           </div>
         </div>
-      ) : (
+      ) : tab === "gems" ? (
         <div className="min-h-0 flex-1">
           <HiddenGemStudio />
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <AdminRouteMap />
         </div>
       )}
     </div>

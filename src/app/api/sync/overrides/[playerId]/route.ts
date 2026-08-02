@@ -4,7 +4,7 @@ import { isAdminRequest } from "@/lib/adminAuth";
 import { genId } from "@/lib/id";
 import type { GmAction, GmOverride } from "@/lib/telemetry";
 
-const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue"];
+const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue", "reset_stats"];
 
 function blobPathname(playerId: string) {
   const safeId = playerId.replace(/[^a-zA-Z0-9_-]/g, "");

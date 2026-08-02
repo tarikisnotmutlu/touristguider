@@ -14,7 +14,7 @@ export interface PlayerTelemetry {
   timestamp: number;
 }
 
-export type GmAction = "full_heal" | "send_water" | "gift_cat" | "cure_fatigue";
+export type GmAction = "full_heal" | "send_water" | "gift_cat" | "cure_fatigue" | "reset_stats";
 
 export interface GmOverride {
   id: string;
@@ -27,6 +27,7 @@ export const GM_ACTION_LABEL: Record<GmAction, string> = {
   send_water: "Send Water",
   gift_cat: "Gift a Cat (+1)",
   cure_fatigue: "Cure Fatigue",
+  reset_stats: "Reset Stats",
 };
 
 export const GM_ACTION_MESSAGE: Record<GmAction, string> = {
@@ -34,6 +35,7 @@ export const GM_ACTION_MESSAGE: Record<GmAction, string> = {
   send_water: "The Game Master sent you water! 💧",
   gift_cat: "The Game Master sent a mystical cat! 🐾 +1",
   cure_fatigue: "The Game Master cured your fatigue! 🌿",
+  reset_stats: "The Game Master reset your stats! 🔄",
 };
 
 const PLAYER_ID_KEY = "touristguider:playerId";
