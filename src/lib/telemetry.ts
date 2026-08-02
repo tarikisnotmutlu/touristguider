@@ -56,6 +56,14 @@ export function getPlayerName(): string {
   return window.localStorage.getItem(PLAYER_NAME_KEY) || "Traveler";
 }
 
+/** Distinguishes "never set" from "set to the Traveler fallback" —
+ *  getPlayerName() alone can't tell those apart, but the onboarding gate
+ *  needs to. */
+export function hasPlayerName(): boolean {
+  if (typeof window === "undefined") return false;
+  return !!window.localStorage.getItem(PLAYER_NAME_KEY)?.trim();
+}
+
 export function setPlayerName(name: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(PLAYER_NAME_KEY, name.trim() || "Traveler");

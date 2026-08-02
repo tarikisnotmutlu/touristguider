@@ -51,6 +51,17 @@ body {
   width: 100vw !important;
   height: 100vh !important;
 }
+
+/* The player-facing map's sepia/premium tint lives on the canvas alone, not
+   on .maplibregl-map (the shared parent of the canvas AND every DOM
+   marker/control) — a filter on that shared ancestor would force the browser
+   to composite markers into the same expensive rasterized layer as the
+   canvas on every frame, which is what caused markers to visibly lag/wobble
+   behind the basemap during a pan. Scoped to .tg-tinted-map so the Admin
+   dashboard's maps (no wrapper class) stay untinted. */
+.tg-tinted-map .maplibregl-canvas {
+  filter: sepia(0.15) hue-rotate(65deg) saturate(0.8) contrast(0.9);
+}
 .maplibregl-ctrl-attrib {
   font-size: 10px !important;
 }
@@ -76,9 +87,12 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
-/* Our own category step markers (see MapMarkers.tsx). Translucent glass so
- * the sage-tinted basemap shows through slightly — the category color moves
- * to the border since the fill itself is no longer solid. */
+/* Our own category step markers (see MapMarkers.tsx). Near-solid (not a true
+ * backdrop-filter glass) on purpose — backdrop-filter forces the browser to
+ * re-sample whatever's moving underneath it on every single frame, and with
+ * a dozen-plus of these markers panning at once that's the dominant cause of
+ * the lag/"wobble" behind the map's own movement. A solid-enough background
+ * reads almost the same visually without that per-frame resampling cost. */
 .tg-marker {
   position: relative;
   display: flex;
@@ -88,14 +102,15 @@ body {
   height: 28px;
   border-radius: 9999px;
   border: 2px solid white;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 2px 8px rgba(41, 37, 36, 0.3);
   cursor: pointer;
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
+  /* transform is intentionally NOT transitioned — MapLibre writes this
+     element's `transform` inline on every pan/zoom frame to reposition it,
+     and a CSS transition on the same property eases each of those updates
+     instead of snapping instantly, which reads as the marker "wobbling"
+     and lagging behind the map while panning. */
+  transition: box-shadow 0.15s ease;
 }
 
 .tg-marker-active {
@@ -134,9 +149,9 @@ body {
   width: 28px;
   height: 28px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* No backdrop-filter — see .tg-marker's comment above; same per-frame
+     resampling cost during a pan, same fix. */
+  background: rgba(255, 255, 255, 0.92);
   color: #292524;
   font-size: 13px;
   border: 2px solid rgba(41, 37, 36, 0.55);
@@ -150,9 +165,9 @@ body {
   width: 24px;
   height: 24px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* No backdrop-filter — see .tg-marker's comment above; same per-frame
+     resampling cost during a pan, same fix. */
+  background: rgba(255, 255, 255, 0.92);
   font-size: 12px;
   border: 2px solid var(--color-terracotta-500);
   box-shadow: 0 2px 10px rgba(189, 94, 49, 0.35);

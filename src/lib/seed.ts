@@ -1,4 +1,5 @@
 import type { Day, RouteSegment, Step, TransportMode, Trip } from "./types";
+import { ROUTABLE_MODES } from "./types";
 import type { PlaceCategory } from "./categories";
 import { estimateDurationMin, haversineMeters } from "./geo";
 import { recomputeDayTimes } from "./time";
@@ -51,6 +52,10 @@ function makeSeedRoute(from: { lat: number; lng: number }, to: { lat: number; ln
     isManual: false,
     manualWaypoints: [],
     geometry: [from, to],
+    // Walk/drive legs get their real geometry from MapView's OSRM fetch on
+    // first render, same as any freshly-created route — see makeRoute() in
+    // useTripStore.
+    geometryResolved: !ROUTABLE_MODES.includes(mode),
     resetNonce: 0,
   };
 }

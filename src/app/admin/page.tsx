@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { GM_ACTION_LABEL, type GmAction, type PlayerTelemetry } from "@/lib/telemetry";
 
 const AdminLiveMap = dynamic(() => import("@/components/admin/AdminLiveMap"), { ssr: false });
+const HiddenGemStudio = dynamic(() => import("@/components/admin/HiddenGemStudio"), { ssr: false });
 
 const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue"];
 const POLL_MS = 8000;
@@ -126,8 +127,11 @@ function PinGate({ onAuthed }: { onAuthed: () => void }) {
   );
 }
 
+type AdminTab = "gm" | "gems";
+
 export default function AdminPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [tab, setTab] = useState<AdminTab>("gm");
   const [players, setPlayers] = useState<PlayerTelemetry[]>([]);
   const [pendingPlayerId, setPendingPlayerId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -193,31 +197,63 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex h-dvh w-full flex-col bg-stone-50 lg:flex-row">
-      <div className="h-64 shrink-0 border-b border-stone-200 lg:h-auto lg:w-1/2 lg:border-b-0 lg:border-r">
-        <AdminLiveMap players={players} />
+    <div className="flex h-dvh w-full flex-col bg-stone-50">
+      <div className="flex shrink-0 items-center gap-1 border-b border-stone-200 bg-white px-4 py-2">
+        <TabButton active={tab === "gm"} onClick={() => setTab("gm")}>
+          🎩 Game Master
+        </TabButton>
+        <TabButton active={tab === "gems"} onClick={() => setTab("gems")}>
+          ✨ Hidden Gem Studio
+        </TabButton>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-lg font-bold tracking-tight text-stone-800">🎩 Game Master Dashboard</h1>
-          <span className="text-xs text-stone-400">{players.length} traveler{players.length === 1 ? "" : "s"}</span>
-        </div>
-        {players.length === 0 ? (
-          <p className="text-sm text-stone-400">No travelers checked in yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {players.map((p) => (
-              <PlayerCard
-                key={p.playerId}
-                player={p}
-                onAction={handleAction}
-                pending={pendingPlayerId === p.playerId}
-                now={now}
-              />
-            ))}
+
+      {tab === "gm" ? (
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <div className="h-64 shrink-0 border-b border-stone-200 lg:h-auto lg:w-1/2 lg:border-b-0 lg:border-r">
+            <AdminLiveMap players={players} />
           </div>
-        )}
-      </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <h1 className="text-lg font-bold tracking-tight text-stone-800">🎩 Game Master Dashboard</h1>
+              <span className="text-xs text-stone-400">{players.length} traveler{players.length === 1 ? "" : "s"}</span>
+            </div>
+            {players.length === 0 ? (
+              <p className="text-sm text-stone-400">No travelers checked in yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {players.map((p) => (
+                  <PlayerCard
+                    key={p.playerId}
+                    player={p}
+                    onAction={handleAction}
+                    pending={pendingPlayerId === p.playerId}
+                    now={now}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <HiddenGemStudio />
+        </div>
+      )}
     </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      type="button"
+      className={
+        "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors " +
+        (active ? "bg-stone-800 text-white" : "text-stone-500 hover:bg-stone-100")
+      }
+    >
+      {children}
+    </button>
   );
 }

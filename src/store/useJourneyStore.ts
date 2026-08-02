@@ -50,6 +50,7 @@ export interface ArrivalInfo {
 export interface UnlockedGemInfo {
   id: string;
   note: string;
+  imageUrl?: string;
 }
 
 export type PanelView = "overview" | "unplanned" | "day";
@@ -57,6 +58,12 @@ export type PanelView = "overview" | "unplanned" | "day";
 interface JourneyState {
   isEditMode: boolean;
   toggleEditMode: () => void;
+
+  /** True for exactly one pending click: MapView's "Add Stop" button flips
+   *  this on, the very next map click drops the node and flips it back off.
+   *  Lets map clicks stay inert the rest of the time, even in Edit Mode. */
+  isAddingNode: boolean;
+  setAddingNode: (adding: boolean) => void;
 
   /** Which pill tab is showing in the panel, persisted so a refresh mid-trip
    *  doesn't dump the friend back to a random tab. When panelView is "day",
@@ -119,7 +126,7 @@ interface JourneyState {
    *  geo-locked gem only shows its full reveal modal the first time. */
   discoveredGemIds: string[];
   unlockedGem: UnlockedGemInfo | null;
-  triggerGemUnlock: (id: string, note: string) => void;
+  triggerGemUnlock: (id: string, note: string, imageUrl?: string) => void;
   clearGemUnlock: () => void;
 
   /** Brief "get closer" toast when a still-locked gem is tapped from afar. */
@@ -142,7 +149,10 @@ export const useJourneyStore = create<JourneyState>()(
   persist(
     (set, get) => ({
       isEditMode: false,
-      toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode })),
+      toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode, isAddingNode: false })),
+
+      isAddingNode: false,
+      setAddingNode: (adding) => set({ isAddingNode: adding }),
 
       panelView: "day",
       savedDayIndex: 0,
@@ -240,10 +250,10 @@ export const useJourneyStore = create<JourneyState>()(
 
       discoveredGemIds: [],
       unlockedGem: null,
-      triggerGemUnlock: (id, note) =>
+      triggerGemUnlock: (id, note, imageUrl) =>
         set((s) => {
           if (s.discoveredGemIds.includes(id)) return {};
-          return { unlockedGem: { id, note }, discoveredGemIds: [...s.discoveredGemIds, id] };
+          return { unlockedGem: { id, note, imageUrl }, discoveredGemIds: [...s.discoveredGemIds, id] };
         }),
       clearGemUnlock: () => set({ unlockedGem: null }),
 

@@ -11,7 +11,9 @@ import Hud from "./Hud";
 import CatToast from "./CatToast";
 import GemHintToast from "./GemHintToast";
 import GmToast from "./GmToast";
+import AddNodeHintToast from "./AddNodeHintToast";
 import ArrivalCelebration from "./ArrivalCelebration";
+import OnboardingGate from "./OnboardingGate";
 
 // maplibre-gl needs `window`, so the whole map tree is client-only and loaded
 // without SSR.
@@ -19,27 +21,30 @@ const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
 export default function AppShell() {
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-stone-50">
-      <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
-        <MapView />
-      </div>
-
-      <div className="pointer-events-none absolute inset-0 z-40 flex">
-        <div className="pointer-events-auto">
-          <DesktopPanel />
+    <OnboardingGate>
+      <div className="relative h-dvh w-full overflow-hidden bg-stone-50">
+        <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
+          <MapView />
         </div>
-      </div>
 
-      <MobileSheet />
-      <Hud />
-      <CatToast />
-      <GemHintToast />
-      <GmToast />
-      <StepCard />
-      <HiddenGemModal />
-      <ArrivalCelebration />
-      <PanicButton />
-      <JourneyEngine />
-    </div>
+        <div className="pointer-events-none absolute inset-0 z-40 flex">
+          <div className="pointer-events-auto">
+            <DesktopPanel />
+          </div>
+        </div>
+
+        <MobileSheet />
+        <Hud />
+        <CatToast />
+        <GemHintToast />
+        <GmToast />
+        <AddNodeHintToast />
+        <StepCard />
+        <HiddenGemModal />
+        <ArrivalCelebration />
+        <PanicButton />
+        <JourneyEngine />
+      </div>
+    </OnboardingGate>
   );
 }

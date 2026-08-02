@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { Day, LatLng, RouteSegment, Step, TransportMode, Trip } from "@/lib/types";
+import type { Day, HiddenGem, LatLng, RouteSegment, Step, TransportMode, Trip } from "@/lib/types";
+import { ROUTABLE_MODES } from "@/lib/types";
 import type { PlaceCategory } from "@/lib/categories";
 import { estimateDurationMin, haversineMeters } from "@/lib/geo";
 import { recomputeDayTimes } from "@/lib/time";
@@ -19,6 +20,11 @@ function makeRoute(from: LatLng, to: LatLng, mode: TransportMode): RouteSegment 
     isManual: false,
     manualWaypoints: [],
     geometry: [from, to],
+    // Routable modes (walk/drive) need a real OSRM fetch before this
+    // placeholder straight line is fit to actually render — see MapView's
+    // route-sync effect. Transit/ferry have no fetch to wait for, so their
+    // straight-line schematic is the final answer already.
+    geometryResolved: !ROUTABLE_MODES.includes(mode),
     resetNonce: 0,
   };
 }
@@ -106,7 +112,7 @@ interface TripState {
   setRouteFound: (
     dayId: string,
     segIndex: number,
-    info: { distanceM: number; durationMin: number; geometry: LatLng[] }
+    info: { distanceM: number; durationMin: number; geometry: LatLng[]; geometryResolved: boolean }
   ) => void;
   insertManualWaypoint: (
     dayId: string,
@@ -123,8 +129,9 @@ interface TripState {
   removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
   resetRouteToAuto: (dayId: string, segIndex: number) => void;
 
-  addHiddenGem: (point: LatLng, note: string, geoLocked: boolean, name?: string) => void;
-  removeHiddenGem: (id: string) => void;
+  /** Replaces the trip's hidden-gem list wholesale — used by the background
+   *  poll that pulls in gems the Game Master placed via the Admin panel. */
+  setHiddenGems: (gems: HiddenGem[]) => void;
 
   addUnplannedPlace: (place: {
     name: string;
@@ -410,6 +417,7 @@ export const useTripStore = create<TripState>()(
         route.distanceM = info.distanceM;
         route.durationMin = info.durationMin;
         route.geometry = info.geometry;
+        route.geometryResolved = info.geometryResolved;
         recalcDay(day);
       }),
 
@@ -456,24 +464,12 @@ export const useTripStore = create<TripState>()(
         recalcDay(day);
       }),
 
-    addHiddenGem: (point, note, geoLocked, name) =>
+    // Not run through recordHistory/undo — this mirrors gems the Game Master
+    // placed via the Admin Hidden Gem Studio, not a local edit the player
+    // made, so it shouldn't be something the player's own Ctrl+Z can revert.
+    setHiddenGems: (gems) =>
       set((state) => {
-        recordHistory(state);
-        state.trip.hiddenGems.push({
-          id: genId(),
-          lat: point.lat,
-          lng: point.lng,
-          note: note.trim(),
-          createdAt: Date.now(),
-          geoLocked,
-          name: name?.trim() || undefined,
-        });
-      }),
-
-    removeHiddenGem: (id) =>
-      set((state) => {
-        recordHistory(state);
-        state.trip.hiddenGems = state.trip.hiddenGems.filter((g) => g.id !== id);
+        state.trip.hiddenGems = gems;
       }),
 
     addUnplannedPlace: (place) =>

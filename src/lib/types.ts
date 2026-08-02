@@ -46,6 +46,13 @@ export interface RouteSegment {
   manualWaypoints: LatLng[];
   /** Last known route geometry, kept for non-routable (transit) segments. */
   geometry: LatLng[];
+  /** True once `geometry` reflects a real OSRM street-hugging fetch for this
+   *  exact pair of endpoints (routable modes only — transit/ferry are always
+   *  "resolved" since their straight-line schematic IS the final answer).
+   *  While false, MapView deliberately renders no line for this segment
+   *  rather than a straight-line placeholder — see MapView's route-sync
+   *  effect. */
+  geometryResolved: boolean;
   /** Bumped to force the map layer to rebuild from scratch (used by "reset to auto"). */
   resetNonce: number;
   /** User-entered line/route name for a "transit" segment, e.g. "M2 Metro to Taksim". */
@@ -75,6 +82,17 @@ export interface HiddenGem {
   /** Trip-creator-only label for telling gems apart while editing — never
    *  shown to the visitor, who only ever sees the generic ✨ pin. */
   name?: string;
+  /** Geo-lock trigger distance in meters. Falls back to a shared default
+   *  (see GEM_UNLOCK_RADIUS_M) for gems saved before this field existed. */
+  radiusM?: number;
+  /** Shown at the top of the discovery reveal when set, postcard-style.
+   *  Legacy field from before native upload — still rendered as a fallback
+   *  when a gem has no imageBase64. */
+  imageUrl?: string;
+  /** A data: URL produced by the Admin Hidden Gem Studio's native file
+   *  upload (FileReader.readAsDataURL) — stored directly on the gem so no
+   *  cloud bucket is required. Preferred over imageUrl when both are set. */
+  imageBase64?: string;
 }
 
 /** A saved place with no day/time slot yet — lives in the "Unplanned" tab

@@ -1,4 +1,5 @@
 import type { Day, HiddenGem, RouteSegment, Step, Trip } from "./types";
+import { ROUTABLE_MODES } from "./types";
 import { normalizeTransportMode } from "./transport";
 
 function normalizeGem(gem: HiddenGem): HiddenGem {
@@ -16,11 +17,19 @@ function normalizeStep(step: Step): Step {
 }
 
 function normalizeRoute(route: RouteSegment): RouteSegment {
+  const geometry = route.geometry ?? [];
+  const mode = normalizeTransportMode(route.mode);
   return {
     ...route,
-    mode: normalizeTransportMode(route.mode),
+    mode,
     manualWaypoints: route.manualWaypoints ?? [],
-    geometry: route.geometry ?? [],
+    geometry,
+    // Trips saved before this field existed: transit/ferry never had an
+    // OSRM fetch to wait for, so their straight line was always the final
+    // answer. For walk/drive, a geometry with more than the two straight
+    // endpoints could only have come from a real OSRM fetch — anything
+    // shorter needs a fresh fetch before MapView will render it.
+    geometryResolved: route.geometryResolved ?? (!ROUTABLE_MODES.includes(mode) || geometry.length > 2),
     resetNonce: route.resetNonce ?? 0,
   };
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
+import { useJourneyStore } from "@/store/useJourneyStore";
 import { ALL_CATEGORIES, CATEGORY_ICON, CATEGORY_LABEL } from "@/lib/categories";
 import Modal from "./Modal";
 
@@ -14,6 +15,7 @@ export default function StepCard() {
   const addChecklistItem = useTripStore((s) => s.addChecklistItem);
   const removeChecklistItem = useTripStore((s) => s.removeChecklistItem);
   const updateStep = useTripStore((s) => s.updateStep);
+  const isEditMode = useJourneyStore((s) => s.isEditMode);
   const [newItem, setNewItem] = useState("");
 
   let found: { dayId: string; step: (typeof trip.days)[number]["steps"][number] } | null = null;
@@ -42,25 +44,32 @@ export default function StepCard() {
 
           <div>
             <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-400">Category</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  title={CATEGORY_LABEL[cat]}
-                  onClick={() => updateStep(found!.dayId, found!.step.id, { category: cat })}
-                  className={clsx(
-                    "flex items-center gap-1 rounded-full border px-2 py-1 text-sm",
-                    found.step.category === cat
-                      ? "border-sage-400 bg-sage-50"
-                      : "border-stone-200 bg-white hover:bg-stone-50"
-                  )}
-                >
-                  <span>{CATEGORY_ICON[cat]}</span>
-                  <span className="text-xs text-stone-600">{CATEGORY_LABEL[cat]}</span>
-                </button>
-              ))}
-            </div>
+            {isEditMode ? (
+              <div className="flex flex-wrap gap-1.5">
+                {ALL_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    title={CATEGORY_LABEL[cat]}
+                    onClick={() => updateStep(found!.dayId, found!.step.id, { category: cat })}
+                    className={clsx(
+                      "flex items-center gap-1 rounded-full border px-2 py-1 text-sm",
+                      found.step.category === cat
+                        ? "border-sage-400 bg-sage-50"
+                        : "border-stone-200 bg-white hover:bg-stone-50"
+                    )}
+                  >
+                    <span>{CATEGORY_ICON[cat]}</span>
+                    <span className="text-xs text-stone-600">{CATEGORY_LABEL[cat]}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="flex w-fit items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-1 text-sm">
+                <span>{CATEGORY_ICON[found.step.category]}</span>
+                <span className="text-xs text-stone-600">{CATEGORY_LABEL[found.step.category]}</span>
+              </span>
+            )}
           </div>
 
           <div>
@@ -88,52 +97,64 @@ export default function StepCard() {
                   <span className={item.done ? "flex-1 text-stone-400 line-through" : "flex-1 text-stone-700"}>
                     {item.label}
                   </span>
-                  <button
-                    onClick={() => removeChecklistItem(found!.dayId, found!.step.id, item.id)}
-                    className="text-stone-300 hover:text-terracotta-600"
-                    type="button"
-                  >
-                    ✕
-                  </button>
+                  {isEditMode && (
+                    <button
+                      onClick={() => removeChecklistItem(found!.dayId, found!.step.id, item.id)}
+                      className="text-stone-300 hover:text-terracotta-600"
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </li>
               ))}
               {found.step.checklist.length === 0 && (
                 <li className="text-sm text-stone-400">Nothing added yet.</li>
               )}
             </ul>
-            <form
-              className="mt-2 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                addChecklistItem(found!.dayId, found!.step.id, newItem);
-                setNewItem("");
-              }}
-            >
-              <input
-                value={newItem}
-                onChange={(e) => setNewItem(e.target.value)}
-                placeholder="e.g. Try the baklava"
-                className="flex-1 rounded-full border border-stone-200 px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="rounded-full bg-sage-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-sage-700"
+            {isEditMode && (
+              <form
+                className="mt-2 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addChecklistItem(found!.dayId, found!.step.id, newItem);
+                  setNewItem("");
+                }}
               >
-                Add
-              </button>
-            </form>
+                <input
+                  value={newItem}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  placeholder="e.g. Try the baklava"
+                  className="flex-1 rounded-full border border-stone-200 px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-full bg-sage-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-sage-700"
+                >
+                  Add
+                </button>
+              </form>
+            )}
           </div>
 
-          <div>
-            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-400">Notes</h4>
-            <textarea
-              value={found.step.notes}
-              onChange={(e) => updateStep(found!.dayId, found!.step.id, { notes: e.target.value })}
-              rows={3}
-              className="w-full rounded-2xl border border-stone-200 p-2.5 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
-              placeholder="Anything to remember about this stop…"
-            />
-          </div>
+          {(isEditMode || found.step.notes) && (
+            <div>
+              <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-400">Notes</h4>
+              {isEditMode ? (
+                <textarea
+                  value={found.step.notes}
+                  onChange={(e) => updateStep(found!.dayId, found!.step.id, { notes: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-2xl border border-stone-200 p-2.5 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+                  placeholder="Anything to remember about this stop…"
+                />
+              ) : (
+                <p className="whitespace-pre-wrap rounded-2xl border border-stone-200 p-2.5 text-sm text-stone-700">
+                  {found.step.notes}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Modal>

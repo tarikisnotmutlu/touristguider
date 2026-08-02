@@ -32,7 +32,13 @@ export function updateStepMarkerEl(
   active: boolean,
   colorOverride?: string
 ): void {
-  el.className = "tg-marker" + (active ? " tg-marker-active" : "");
+  // classList.toggle, never a full className overwrite — maplibre-gl adds
+  // its own `maplibregl-marker` class to this element right after creation
+  // (that's what makes it `position: absolute` instead of sitting in normal
+  // document flow), and a plain `el.className = "..."` assignment here would
+  // silently wipe that class on every re-render, leaving every marker to
+  // stack vertically in DOM order instead of at its projected map position.
+  el.classList.toggle("tg-marker-active", active);
   el.style.borderColor = colorOverride ?? CATEGORY_COLOR[category];
   const icon = el.querySelector<HTMLSpanElement>(".tg-marker-icon");
   const badge = el.querySelector<HTMLSpanElement>(".tg-marker-badge");

@@ -5,7 +5,7 @@ import { useJourneyStore } from "@/store/useJourneyStore";
 
 /** Discreet global toggle between the clutter-free View mode (default, what a
  *  friend following the trip sees) and Edit mode (search, drag handles,
- *  delete, transport picker, hidden-gem creator). */
+ *  delete, transport picker). */
 export default function EditModeToggle() {
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const toggleEditMode = useJourneyStore((s) => s.toggleEditMode);

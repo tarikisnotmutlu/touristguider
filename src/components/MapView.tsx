@@ -21,7 +21,7 @@ import {
   createGemMarkerEl,
   createLiveLocationMarkerEl,
 } from "./MapMarkers";
-import HiddenGemCreateForm from "./HiddenGemCreateForm";
+import AddStopPinForm from "./AddStopPinForm";
 
 // Istanbul, used only as a fallback center before any trip data has loaded.
 const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
@@ -94,14 +94,12 @@ export default function MapView() {
   // intentional StrictMode-double-mount lock, not just a null check.
   const isMapInitialized = useRef(false);
   const [ready, setReady] = useState(false);
-  const [placingGem, setPlacingGem] = useState(false);
-  const [pendingGemPoint, setPendingGemPoint] = useState<LatLng | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [ghostPoint, setGhostPoint] = useState<LatLng | null>(null);
+  const [pendingStopPoint, setPendingStopPoint] = useState<LatLng | null>(null);
 
   // Mirrors of state read inside stable (bound-once) map event handlers,
   // which otherwise close over stale values.
-  const placingGemRef = useRef(placingGem);
   const dragStateRef = useRef(dragState);
   const ghostPointRef = useRef(ghostPoint);
   const hitLayerIdsRef = useRef<string[]>([]);
@@ -127,6 +125,8 @@ export default function MapView() {
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const activeStepId = useTripStore((s) => s.activeStepId);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
+  const isAddingNode = useJourneyStore((s) => s.isAddingNode);
+  const setAddingNode = useJourneyStore((s) => s.setAddingNode);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const panelView = useJourneyStore((s) => s.panelView);
   const day = trip.days[activeDayIndex];
@@ -141,9 +141,6 @@ export default function MapView() {
   );
 
   useEffect(() => {
-    placingGemRef.current = placingGem;
-  }, [placingGem]);
-  useEffect(() => {
     dragStateRef.current = dragState;
   }, [dragState]);
   useEffect(() => {
@@ -152,14 +149,16 @@ export default function MapView() {
 
   const hitLayerIds = useMemo(() => {
     // Manual-waypoint dragging only makes sense for a single active day's
-    // route being edited — disabled in overview mode, where every day's
-    // routes render at once and there's no single "current" route to bend.
-    if (!day || overviewMode) return [];
+    // route being edited — disabled in overview mode (no single "current"
+    // route to bend) and, per the strict view/edit split, disabled entirely
+    // outside Edit Mode so an accidental drag on the map can never mutate
+    // the itinerary while just browsing.
+    if (!day || overviewMode || !isEditMode) return [];
     return day.steps
       .map((_, i) => ({ i, mode: day.routes[i]?.mode }))
       .filter(({ mode }) => mode && ROUTABLE_MODES.includes(mode))
       .map(({ i }) => `${lineSourceId(day.id, i)}-hit`);
-  }, [day, overviewMode]);
+  }, [day, overviewMode, isEditMode]);
   useEffect(() => {
     hitLayerIdsRef.current = hitLayerIds;
   }, [hitLayerIds]);
@@ -243,10 +242,16 @@ export default function MapView() {
     const resizeObserver = new ResizeObserver(wakeUp);
     resizeObserver.observe(mapContainer.current);
 
+    // ---- one-shot "Add Stop" placement ----
+    // Reads straight off the store (always current) rather than a ref mirror
+    // — no React state involved in the click path, so there's nothing to go
+    // stale. Every other map click is a strict no-op by construction: this
+    // is the ONLY place a plain map click can affect the itinerary at all.
     map.on("click", (e: maplibregl.MapMouseEvent) => {
-      if (!placingGemRef.current) return;
-      setPendingGemPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-      setPlacingGem(false);
+      const journey = useJourneyStore.getState();
+      if (!journey.isEditMode || !journey.isAddingNode) return;
+      journey.setAddingNode(false);
+      setPendingStopPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
 
     function queryHit(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
@@ -318,8 +323,8 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = placingGem ? "crosshair" : dragState ? "grabbing" : "";
-  }, [placingGem, dragState]);
+    map.getCanvas().style.cursor = dragState ? "grabbing" : isAddingNode ? "crosshair" : "";
+  }, [dragState, isAddingNode]);
 
   // ---- fetch/refresh route geometry for each segment as needed ----
   useEffect(() => {
@@ -339,6 +344,7 @@ export default function MapView() {
             distanceM,
             durationMin: estimateDurationMin(distanceM, route.mode),
             geometry: [from, to],
+            geometryResolved: true,
           });
         }
         return;
@@ -359,10 +365,23 @@ export default function MapView() {
       abortRef.current.set(segId, controller);
 
       const waypoints = [from, ...route.manualWaypoints, to];
-      fetchRoute(waypoints, route.mode, controller.signal).then((result) => {
-        if (controller.signal.aborted) return;
-        useTripStore.getState().setRouteFound(day.id, i, result);
-      });
+      // Retries on failure rather than ever accepting a straight line for a
+      // routable segment (walk/drive) — this segment's map line simply stays
+      // unresolved (rendered as a gap, not a wrong straight line — see the
+      // route-sync effect below) until either OSRM succeeds or this fetch is
+      // superseded (aborted) by a newer one for the same segment.
+      function attempt() {
+        fetchRoute(waypoints, route.mode, controller.signal)
+          .then((result) => {
+            if (controller.signal.aborted) return;
+            useTripStore.getState().setRouteFound(day.id, i, { ...result, geometryResolved: true });
+          })
+          .catch(() => {
+            if (controller.signal.aborted) return;
+            window.setTimeout(attempt, 4000);
+          });
+      }
+      attempt();
     });
   }, [day]);
 
@@ -384,6 +403,15 @@ export default function MapView() {
           const from = pointBefore(day, i);
           const to: LatLng = { lat: step.lat, lng: step.lng };
           const srcId = lineSourceId(day.id, i);
+          const routable = ROUTABLE_MODES.includes(route.mode);
+
+          // A routable segment whose geometry hasn't been OSRM-resolved yet
+          // (just added/reordered, fetch still in flight or retrying) is
+          // left out of desiredIds entirely — the cleanup pass below then
+          // strips any stale line for it, so this segment briefly renders
+          // as a gap rather than a straight line cutting across the map.
+          if (routable && !route.geometryResolved) return;
+
           desiredIds.add(srcId);
 
           const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
@@ -393,7 +421,6 @@ export default function MapView() {
           // no per-property update call, needed just to fade a finished leg.
           const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i, isCompleted: step.completed });
           const color = dayColor(index);
-          const routable = ROUTABLE_MODES.includes(route.mode);
           const signature = route.mode;
 
           const existingSource = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
@@ -565,7 +592,10 @@ export default function MapView() {
 
   // ---- draggable manual-waypoint ("via") markers ----
   // Only for the single active day being edited — overview mode has no one
-  // "current" route to bend, same rationale as hitLayerIds above.
+  // "current" route to bend, same rationale as hitLayerIds above. Drag and
+  // dblclick-to-remove are both gated on Edit Mode: outside it these render
+  // as plain, non-draggable, non-removable markers so a stray tap or drag
+  // gesture while just browsing can never touch the itinerary.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -581,24 +611,28 @@ export default function MapView() {
       const route = day.routes[i];
       route.manualWaypoints.forEach((wp, viaIndex) => {
         const el = createViaMarkerEl();
-        el.addEventListener("dblclick", (ev) => {
-          ev.stopPropagation();
-          useTripStore.getState().removeManualWaypoint(day.id, i, viaIndex);
-        });
-        const marker = new maplibregl.Marker({ element: el, anchor: "center", draggable: true })
+        if (isEditMode) {
+          el.addEventListener("dblclick", (ev) => {
+            ev.stopPropagation();
+            useTripStore.getState().removeManualWaypoint(day.id, i, viaIndex);
+          });
+        }
+        const marker = new maplibregl.Marker({ element: el, anchor: "center", draggable: isEditMode })
           .setLngLat([wp.lng, wp.lat])
           .addTo(map);
-        marker.on("dragend", () => {
-          const lngLat = marker.getLngLat();
-          useTripStore
-            .getState()
-            .updateManualWaypoint(day.id, i, viaIndex, { lat: lngLat.lat, lng: lngLat.lng });
-        });
+        if (isEditMode) {
+          marker.on("dragend", () => {
+            const lngLat = marker.getLngLat();
+            useTripStore
+              .getState()
+              .updateManualWaypoint(day.id, i, viaIndex, { lat: lngLat.lat, lng: lngLat.lng });
+          });
+        }
         markers.push(marker);
       });
     });
     viaMarkersRef.current = markers;
-  }, [day, overviewMode]);
+  }, [day, overviewMode, isEditMode]);
 
   // ---- ghost preview marker while dragging a new via point onto the route ----
   useEffect(() => {
@@ -687,10 +721,14 @@ export default function MapView() {
 
   return (
     <div className="fixed inset-0 z-0 h-screen w-screen overflow-hidden">
-      <div
-        ref={mapContainer}
-        className="absolute inset-0 sepia-[.15] hue-rotate-[65deg] saturate-[0.8] contrast-[0.9]"
-      />
+      {/* The sepia/hue-rotate/saturate/contrast tint lives on .maplibregl-canvas
+          itself (globals.css), not here — this container is the shared parent
+          of both the canvas AND every DOM marker, and a CSS filter on a shared
+          ancestor forces the browser to composite the whole subtree as one
+          rasterized layer every frame. During a pan that fights with
+          MapLibre's own per-frame `transform` updates on markers, which is
+          what read as markers "wobbling" and lagging behind the map. */}
+      <div ref={mapContainer} className="tg-tinted-map absolute inset-0" />
 
       {!day && (
         <div className="absolute inset-0 flex items-center justify-center bg-stone-100 text-stone-400">
@@ -698,31 +736,31 @@ export default function MapView() {
         </div>
       )}
 
-      {/* Desktop-only, edit-mode-only "creator mode" control for dropping a
-          Hidden Gem pin. Positioned top-right (below the zoom control) rather
-          than top-left, since the 400px glass sidebar covers that corner. */}
-      {isEditMode && (
+      {/* Desktop-only, Edit-Mode-only "add a stop" control — the explicit,
+          deliberate alternative to letting a plain map click add a node
+          (see the click handler above, which only ever fires while
+          isAddingNode is true). Positioned top-right, below the zoom
+          control, since the 400px glass sidebar covers the top-left. */}
+      {isEditMode && day && (
         <button
-          onClick={() => setPlacingGem((v) => !v)}
+          onClick={() => setAddingNode(!isAddingNode)}
           type="button"
           className={
             "glass-panel absolute right-4 top-20 hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium shadow-lg lg:flex " +
-            (placingGem
-              ? "ring-2 ring-terracotta-400 text-terracotta-700"
-              : "text-stone-600 hover:text-stone-900")
+            (isAddingNode ? "ring-2 ring-sage-400 text-sage-700" : "text-stone-600 hover:text-stone-900")
           }
         >
-          ✨ {placingGem ? "Click the map to drop it…" : "Drop Hidden Gem"}
+          📍 {isAddingNode ? "Click the map to place it…" : "Add Stop"}
         </button>
       )}
 
-      {pendingGemPoint && (
-        <HiddenGemCreateForm
-          point={pendingGemPoint}
-          onCancel={() => setPendingGemPoint(null)}
-          onSave={(note, geoLocked, name) => {
-            useTripStore.getState().addHiddenGem(pendingGemPoint, note, geoLocked, name);
-            setPendingGemPoint(null);
+      {pendingStopPoint && day && (
+        <AddStopPinForm
+          point={pendingStopPoint}
+          onCancel={() => setPendingStopPoint(null)}
+          onSave={(name, category) => {
+            useTripStore.getState().addStep(day.id, { ...pendingStopPoint, name, category });
+            setPendingStopPoint(null);
           }}
         />
       )}
