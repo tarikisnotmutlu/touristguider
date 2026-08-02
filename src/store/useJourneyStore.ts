@@ -65,6 +65,14 @@ interface JourneyState {
   isAddingNode: boolean;
   setAddingNode: (adding: boolean) => void;
 
+  /** Set to a step's id while the visitor is repositioning that step's pin —
+   *  the "Adjust location" button on its Timeline card flips this on, the
+   *  very next map click moves the pin there and flips it back off. Same
+   *  one-shot pattern as isAddingNode, just targeting an existing step
+   *  instead of creating a new one. */
+  movingStepId: string | null;
+  setMovingStepId: (stepId: string | null) => void;
+
   /** Which pill tab is showing in the panel, persisted so a refresh mid-trip
    *  doesn't dump the friend back to a random tab. When panelView is "day",
    *  `savedDayIndex` says which one — useTripStore.activeDayIndex is the
@@ -149,10 +157,14 @@ export const useJourneyStore = create<JourneyState>()(
   persist(
     (set, get) => ({
       isEditMode: false,
-      toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode, isAddingNode: false })),
+      toggleEditMode: () =>
+        set((s) => ({ isEditMode: !s.isEditMode, isAddingNode: false, movingStepId: null })),
 
       isAddingNode: false,
       setAddingNode: (adding) => set({ isAddingNode: adding }),
+
+      movingStepId: null,
+      setMovingStepId: (stepId) => set({ movingStepId: stepId }),
 
       panelView: "day",
       savedDayIndex: 0,

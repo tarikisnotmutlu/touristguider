@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
@@ -35,8 +35,8 @@ function toGeoJSONLine(coords: LatLng[]): GeoJSON.Feature<GeoJSON.LineString> {
  *  same route geometry and day colors as the player app, just without any
  *  of the editing affordances. Also owns "Reset Day", which un-checks every
  *  step for the selected day directly in the shared trip document. */
-export default function AdminRouteMap() {
-  const [tripIdInput, setTripIdInput] = useState("");
+export default function AdminRouteMap({ tripId }: { tripId?: string } = {}) {
+  const [tripIdInput, setTripIdInput] = useState(tripId ?? "");
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,9 +78,7 @@ export default function AdminRouteMap() {
     };
   }, []);
 
-  async function handleLoad(e: React.FormEvent) {
-    e.preventDefault();
-    const id = tripIdInput.trim();
+  const loadTrip = useCallback(async (id: string) => {
     if (!id) return;
     setLoading(true);
     setLoadError(null);
@@ -100,6 +98,19 @@ export default function AdminRouteMap() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Arriving here via /admin/[tripId] already knows which trip to show —
+  // load it immediately instead of making the GM type the id in by hand.
+  useEffect(() => {
+    if (!tripId) return;
+    const timer = setTimeout(() => loadTrip(tripId), 0);
+    return () => clearTimeout(timer);
+  }, [tripId, loadTrip]);
+
+  function handleLoad(e: React.FormEvent) {
+    e.preventDefault();
+    loadTrip(tripIdInput.trim());
   }
 
   const day = trip?.days[dayIndex] ?? null;

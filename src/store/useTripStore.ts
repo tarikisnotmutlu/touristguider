@@ -102,6 +102,10 @@ interface TripState {
     stepId: string,
     patch: Partial<Pick<Step, "name" | "notes" | "durationMin" | "category">>
   ) => void;
+  /** Repositions a step's pin and rebuilds the routes touching it (its own
+   *  incoming leg and the next step's, since that one now starts from
+   *  wherever this step moved to). */
+  moveStep: (dayId: string, stepId: string, point: LatLng) => void;
   toggleStepCompleted: (dayId: string, stepId: string) => void;
 
   toggleChecklistItem: (dayId: string, stepId: string, itemId: string) => void;
@@ -345,6 +349,18 @@ export const useTripStore = create<TripState>()(
         if (!step) return;
         recordHistory(state);
         Object.assign(step, patch);
+        recalcDay(day);
+      }),
+
+    moveStep: (dayId, stepId, point) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        const step = day?.steps.find((s) => s.id === stepId);
+        if (!day || !step) return;
+        recordHistory(state);
+        step.lat = point.lat;
+        step.lng = point.lng;
+        day.routes = rebuildRoutes(day);
         recalcDay(day);
       }),
 

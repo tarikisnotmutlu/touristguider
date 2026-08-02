@@ -7,6 +7,9 @@ export interface PlayerStats {
 
 export interface PlayerTelemetry {
   playerId: string;
+  /** Which trip this player is currently on — the admin dashboard is scoped
+   *  per-trip, so this is how it knows which players to show. */
+  tripId: string;
   playerName: string;
   lat: number | null;
   lng: number | null;

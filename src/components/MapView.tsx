@@ -155,6 +155,7 @@ export default function MapView() {
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const isAddingNode = useJourneyStore((s) => s.isAddingNode);
   const setAddingNode = useJourneyStore((s) => s.setAddingNode);
+  const movingStepId = useJourneyStore((s) => s.movingStepId);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const panelView = useJourneyStore((s) => s.panelView);
   const day = trip.days[activeDayIndex];
@@ -277,6 +278,16 @@ export default function MapView() {
     // is the ONLY place a plain map click can affect the itinerary at all.
     map.on("click", (e: maplibregl.MapMouseEvent) => {
       const journey = useJourneyStore.getState();
+      if (journey.isEditMode && journey.movingStepId) {
+        const stepId = journey.movingStepId;
+        journey.setMovingStepId(null);
+        const tripState = useTripStore.getState();
+        const ownerDay = tripState.trip.days.find((d) => d.steps.some((s) => s.id === stepId));
+        if (ownerDay) {
+          tripState.moveStep(ownerDay.id, stepId, { lat: e.lngLat.lat, lng: e.lngLat.lng });
+        }
+        return;
+      }
       if (!journey.isEditMode || !journey.isAddingNode) return;
       journey.setAddingNode(false);
       setPendingStopPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
@@ -352,8 +363,8 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = dragState ? "grabbing" : isAddingNode ? "crosshair" : "";
-  }, [dragState, isAddingNode]);
+    map.getCanvas().style.cursor = dragState ? "grabbing" : isAddingNode || movingStepId ? "crosshair" : "";
+  }, [dragState, isAddingNode, movingStepId]);
 
   // ---- fetch/refresh route geometry for each segment as needed ----
   useEffect(() => {

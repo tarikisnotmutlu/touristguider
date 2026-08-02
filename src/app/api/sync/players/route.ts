@@ -3,14 +3,24 @@ import { list } from "@vercel/blob";
 import { isAdminRequest } from "@/lib/adminAuth";
 import type { PlayerTelemetry } from "@/lib/telemetry";
 
-/** Admin-only: every player's latest posted telemetry, for the Game Master
- *  dashboard's live map + player card grid. */
-export async function GET() {
+function safe(id: string) {
+  return id.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+/** Admin-only: every player's latest posted telemetry for one trip, for the
+ *  Game Master dashboard's live map + player card grid. Scoped by `tripId` so
+ *  travelers on a different trip never show up in each other's dashboards. */
+export async function GET(req: Request) {
   if (!(await isAdminRequest())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const { blobs } = await list({ prefix: "players/" });
+  const tripId = new URL(req.url).searchParams.get("tripId");
+  if (!tripId) {
+    return NextResponse.json({ error: "missing_trip_id" }, { status: 400 });
+  }
+
+  const { blobs } = await list({ prefix: `players/${safe(tripId)}/` });
   const players = await Promise.all(
     blobs.map(async (blob) => {
       try {

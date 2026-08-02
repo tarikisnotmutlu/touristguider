@@ -62,6 +62,9 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
   const setActiveStepId = useTripStore((s) => s.setActiveStepId);
   const activeStepId = useTripStore((s) => s.activeStepId);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
+  const movingStepId = useJourneyStore((s) => s.movingStepId);
+  const setMovingStepId = useJourneyStore((s) => s.setMovingStepId);
+  const isMoving = movingStepId === step.id;
 
   const dragStyle = {
     transform: CSS.Transform.toString(transform),
@@ -168,6 +171,20 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
               />
               min
             </label>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMovingStepId(isMoving ? null : step.id);
+              }}
+              title={isMoving ? "Cancel — click the map to place it" : "Adjust pin location"}
+              className={clsx(
+                "text-sm transition-colors",
+                isMoving ? "text-sage-600" : "text-stone-300 hover:text-sage-600"
+              )}
+              type="button"
+            >
+              📍
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();

@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import type { PlayerTelemetry } from "@/lib/telemetry";
 
-function blobPathname(playerId: string) {
-  const safeId = playerId.replace(/[^a-zA-Z0-9_-]/g, "");
-  return `players/${safeId}.json`;
+function safe(id: string) {
+  return id.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function blobPathname(tripId: string, playerId: string) {
+  return `players/${safe(tripId)}/${safe(playerId)}.json`;
 }
 
 /**
@@ -20,9 +23,13 @@ export async function POST(req: Request) {
   if (!body || typeof body.playerId !== "string" || !body.playerId) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
+  if (typeof body.tripId !== "string" || !body.tripId) {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+  }
 
   const telemetry: PlayerTelemetry = {
     playerId: body.playerId,
+    tripId: body.tripId,
     playerName: typeof body.playerName === "string" && body.playerName ? body.playerName : "Traveler",
     lat: typeof body.lat === "number" ? body.lat : null,
     lng: typeof body.lng === "number" ? body.lng : null,
@@ -35,7 +42,7 @@ export async function POST(req: Request) {
     timestamp: Date.now(),
   };
 
-  await put(blobPathname(telemetry.playerId), JSON.stringify(telemetry), {
+  await put(blobPathname(telemetry.tripId, telemetry.playerId), JSON.stringify(telemetry), {
     access: "public",
     addRandomSuffix: false,
     allowOverwrite: true,

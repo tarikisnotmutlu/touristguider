@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useJourneyStore } from "@/store/useJourneyStore";
+import { useTripStore } from "@/store/useTripStore";
 import { getOrCreatePlayerId, getPlayerName, type GmOverride } from "@/lib/telemetry";
 
 const TELEMETRY_POST_MS = 20000;
@@ -26,12 +27,15 @@ export function useSyncTelemetry() {
 
     async function postTelemetry() {
       const journey = useJourneyStore.getState();
+      const tripId = useTripStore.getState().trip.id;
+      if (!tripId) return;
       try {
         await fetch("/api/sync/player", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             playerId,
+            tripId,
             playerName: getPlayerName(),
             lat: journey.liveLocation?.lat ?? null,
             lng: journey.liveLocation?.lng ?? null,

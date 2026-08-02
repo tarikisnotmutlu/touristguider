@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,8 +31,8 @@ interface PendingGem {
  *  Deliberately a plain read/edit/PUT loop rather than routing through
  *  useTripStore — the GM's browser has no reason to be "hydrated" onto
  *  whichever trip a player happens to be viewing. */
-export default function HiddenGemStudio() {
-  const [tripIdInput, setTripIdInput] = useState("");
+export default function HiddenGemStudio({ tripId }: { tripId?: string } = {}) {
+  const [tripIdInput, setTripIdInput] = useState(tripId ?? "");
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,9 +88,7 @@ export default function HiddenGemStudio() {
   }, [dropMode]);
 
   // ---- load a trip by id ----
-  async function handleLoad(e: React.FormEvent) {
-    e.preventDefault();
-    const id = tripIdInput.trim();
+  const loadTrip = useCallback(async (id: string) => {
     if (!id) return;
     setLoading(true);
     setLoadError(null);
@@ -109,6 +107,19 @@ export default function HiddenGemStudio() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Arriving here via /admin/[tripId] already knows which trip to show —
+  // load it immediately instead of making the GM type the id in by hand.
+  useEffect(() => {
+    if (!tripId) return;
+    const timer = setTimeout(() => loadTrip(tripId), 0);
+    return () => clearTimeout(timer);
+  }, [tripId, loadTrip]);
+
+  function handleLoad(e: React.FormEvent) {
+    e.preventDefault();
+    loadTrip(tripIdInput.trim());
   }
 
   // ---- sync gem markers onto the map whenever the loaded trip's gems change ----
