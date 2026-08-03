@@ -57,7 +57,7 @@ export function useSyncTelemetry() {
         if (appliedIdsRef.current.has(docSnap.id)) return;
         appliedIdsRef.current.add(docSnap.id);
         const override = docSnap.data() as GmOverride;
-        journey.applyGmOverride(override.action);
+        journey.applyGmOverride(override.action, override.text);
         deleteDoc(playerOverrideDocRef(sessionId, playerName, docSnap.id)).catch(() => {
           // Best-effort — worst case the same action re-applies once more.
         });

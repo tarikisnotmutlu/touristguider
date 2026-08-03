@@ -4,37 +4,65 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { motion, AnimatePresence } from "framer-motion";
-import { onSnapshot } from "firebase/firestore";
 import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
-import { gemsCollection } from "@/lib/firestorePaths";
-import { docToGem, saveGemDoc, deleteGemDoc } from "@/lib/tripSync";
+import { saveGemDoc, deleteGemDoc } from "@/lib/tripSync";
 import { uploadGemPhoto } from "@/lib/gemPhoto";
 import { genId } from "@/lib/id";
-import type { HiddenGem, LatLng } from "@/lib/types";
-import { createGemMarkerEl } from "../MapMarkers";
+import { dayColor } from "@/lib/dayColors";
+import { pointBefore } from "@/lib/dayHelpers";
+import type { HiddenGem, LatLng, Trip } from "@/lib/types";
+import type { NamedPlayerTelemetry } from "@/lib/telemetry";
+import { createStepMarkerEl, createStartMarkerEl, createGemMarkerEl } from "../MapMarkers";
 
-// Same worker-URL fix as the main MapView — see that file for the full
-// explanation of why this is necessary under Turbopack.
+// Same worker-URL fix as the main player-facing MapView — see that file for
+// the full explanation of why this is necessary under Turbopack.
 if (typeof window !== "undefined") {
   maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
 }
 
 const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
-const DEFAULT_RADIUS_M = 20;
+const DEFAULT_GEM_RADIUS_M = 20;
+
+function lineSourceId(dayId: string, segIndex: number) {
+  return `admin-route-${dayId}-${segIndex}`;
+}
+
+function toGeoJSONLine(coords: LatLng[]): GeoJSON.Feature<GeoJSON.LineString> {
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "LineString", coordinates: coords.map((p) => [p.lng, p.lat]) },
+  };
+}
 
 interface PendingGem {
   point: LatLng;
 }
 
-/** Game-Master-only counterpart to the player app's (now removed) in-trip
- *  gem creator: real-time (onSnapshot) list of Hidden Gems for whichever
- *  session the Session Switcher has selected, click-to-drop placement, and
- *  a native file upload straight to Firebase Storage — the resulting
- *  downloadURL is what gets saved onto the gem document and what the
- *  player app renders directly. */
-export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
-  const [gems, setGems] = useState<HiddenGem[]>([]);
-  const [dropMode, setDropMode] = useState(false);
+/**
+ * One shared map for everything the Game Master used to need three separate
+ * tabs for: the selected day's route/stops, every Hidden Gem (with
+ * click-to-drop placement), and every player's live location — all in the
+ * same view, so switching what you're looking at is a toggle, not a
+ * navigation.
+ */
+export default function AdminMapPane({
+  sessionId,
+  trip,
+  dayIndex,
+  showRoutes,
+  dropGemMode,
+  onExitDropGemMode,
+  players,
+}: {
+  sessionId: string;
+  trip: Trip;
+  dayIndex: number;
+  showRoutes: boolean;
+  dropGemMode: boolean;
+  onExitDropGemMode: () => void;
+  players: NamedPlayerTelemetry[];
+}) {
   const [pending, setPending] = useState<PendingGem | null>(null);
   const [selectedGemId, setSelectedGemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -43,13 +71,17 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const isMapInitialized = useRef(false);
+  const stepMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const startMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const routeIdsRef = useRef<string[]>([]);
   const gemMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
-  const dropModeRef = useRef(dropMode);
+  const playerMarkersRef = useRef<Record<string, maplibregl.Marker>>({});
   const fitOnceRef = useRef<string | null>(null);
+  const dropGemModeRef = useRef(dropGemMode);
 
   useEffect(() => {
-    dropModeRef.current = dropMode;
-  }, [dropMode]);
+    dropGemModeRef.current = dropGemMode;
+  }, [dropGemMode]);
 
   // ---- map init (once) ----
   useEffect(() => {
@@ -67,49 +99,125 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("load", () => setTimeout(() => map.resize(), 0));
     map.on("click", (e: maplibregl.MapMouseEvent) => {
-      if (!dropModeRef.current) return;
+      if (!dropGemModeRef.current) return;
       setPending({ point: { lat: e.lngLat.lat, lng: e.lngLat.lng } });
       setCreateError(null);
-      setDropMode(false);
+      onExitDropGemMode();
     });
 
     return () => {
+      stepMarkersRef.current.forEach((m) => m.remove());
+      startMarkerRef.current?.remove();
       Object.values(gemMarkersRef.current).forEach((m) => m.remove());
+      Object.values(playerMarkersRef.current).forEach((m) => m.remove());
       map.remove();
       mapRef.current = null;
       isMapInitialized.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- click handler intentionally bound once; reads current mode via dropGemModeRef.
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = dropMode ? "crosshair" : "";
-  }, [dropMode]);
+    map.getCanvas().style.cursor = dropGemMode ? "crosshair" : "";
+  }, [dropGemMode]);
 
-  // ---- real-time gems for the selected session ----
+  const day = trip.days[dayIndex] ?? null;
+
+  // ---- sync route lines + step/start markers for the selected day ----
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSelectedGemId(null);
-      setPending(null);
-    }, 0);
-    const unsub = onSnapshot(gemsCollection(sessionId), (snap) => {
-      setGems(snap.docs.map((d) => docToGem(d.id, d.data() as Omit<HiddenGem, "id">)));
-    });
-    return () => {
-      clearTimeout(timer);
-      unsub();
-    };
-  }, [sessionId]);
+    const map = mapRef.current;
+    if (!map || !day) return;
 
-  // ---- sync gem markers onto the map whenever the live gem list changes ----
+    function applyDay() {
+      if (!map || !day) return;
+
+      routeIdsRef.current.forEach((id) => {
+        if (map.getLayer(`${id}-line`)) map.removeLayer(`${id}-line`);
+        if (map.getSource(id)) map.removeSource(id);
+      });
+      routeIdsRef.current = [];
+
+      const color = dayColor(dayIndex);
+      day.steps.forEach((step, i) => {
+        const route = day.routes[i];
+        const from = pointBefore(day, i);
+        const to: LatLng = { lat: step.lat, lng: step.lng };
+        const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
+        const srcId = lineSourceId(day.id, i);
+
+        map.addSource(srcId, { type: "geojson", data: toGeoJSONLine(coords) });
+        map.addLayer({
+          id: `${srcId}-line`,
+          type: "line",
+          source: srcId,
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+            visibility: showRoutes ? "visible" : "none",
+          },
+          paint: {
+            "line-color": color,
+            "line-width": 5,
+            "line-opacity": 0.85,
+            ...(route.mode === "walk" ? { "line-dasharray": [0.3, 1.8] } : {}),
+          },
+        });
+        routeIdsRef.current.push(srcId);
+      });
+
+      stepMarkersRef.current.forEach((m) => m.remove());
+      stepMarkersRef.current = day.steps.map((step, i) => {
+        const el = createStepMarkerEl(i + 1, step.category, false, color);
+        return new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([step.lng, step.lat]).addTo(map);
+      });
+
+      startMarkerRef.current?.remove();
+      startMarkerRef.current = new maplibregl.Marker({
+        element: createStartMarkerEl(color),
+        anchor: "center",
+      })
+        .setLngLat([day.startPoint.lng, day.startPoint.lat])
+        .addTo(map);
+
+      if (fitOnceRef.current !== day.id) {
+        fitOnceRef.current = day.id;
+        const points = [day.startPoint, ...day.steps.map((s) => ({ lat: s.lat, lng: s.lng }))];
+        const bounds = points.reduce(
+          (b, p) => b.extend([p.lng, p.lat]),
+          new maplibregl.LngLatBounds([points[0].lng, points[0].lat], [points[0].lng, points[0].lat])
+        );
+        try {
+          map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 0 });
+        } catch {
+          // best-effort only
+        }
+      }
+    }
+
+    if (map.isStyleLoaded()) applyDay();
+    else map.once("styledata", applyDay);
+  }, [day, dayIndex, showRoutes]);
+
+  // ---- toggle route line visibility without rebuilding sources/markers ----
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    routeIdsRef.current.forEach((id) => {
+      if (map.getLayer(`${id}-line`)) {
+        map.setLayoutProperty(`${id}-line`, "visibility", showRoutes ? "visible" : "none");
+      }
+    });
+  }, [showRoutes]);
 
+  // ---- gem markers (always shown, regardless of selected day) ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
     Object.values(gemMarkersRef.current).forEach((m) => m.remove());
     gemMarkersRef.current = {};
-    gems.forEach((gem) => {
+    trip.hiddenGems.forEach((gem) => {
       const el = createGemMarkerEl();
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -119,22 +227,30 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
         .setLngLat([gem.lng, gem.lat])
         .addTo(map);
     });
+  }, [trip.hiddenGems]);
 
-    if (fitOnceRef.current !== sessionId && gems.length > 0) {
-      fitOnceRef.current = sessionId;
-      const bounds = gems.reduce(
-        (b, p) => b.extend([p.lng, p.lat]),
-        new maplibregl.LngLatBounds([gems[0].lng, gems[0].lat], [gems[0].lng, gems[0].lat])
-      );
-      try {
-        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 0 });
-      } catch {
-        // best-effort only
-      }
-    }
-  }, [gems, sessionId]);
+  // ---- live player markers ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    Object.values(playerMarkersRef.current).forEach((m) => m.remove());
+    playerMarkersRef.current = {};
+    players
+      .filter((p) => p.lat != null && p.lng != null)
+      .forEach((p) => {
+        const el = document.createElement("div");
+        el.className = "flex flex-col items-center gap-1";
+        el.innerHTML = `
+          <div style="width:16px;height:16px;border-radius:9999px;background:#2563eb;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
+          <div style="font-size:11px;font-weight:600;color:#292524;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap">${p.playerName}</div>
+        `;
+        playerMarkersRef.current[p.playerName] = new maplibregl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat([p.lng as number, p.lat as number])
+          .addTo(map);
+      });
+  }, [players]);
 
-  async function handleCreate(gem: Omit<HiddenGem, "id" | "createdAt" | "imageUrl">, photoFile: File | null) {
+  async function handleCreateGem(gem: Omit<HiddenGem, "id" | "createdAt" | "imageUrl">, photoFile: File | null) {
     const id = genId();
     setSaving(true);
     setCreateError(null);
@@ -144,10 +260,6 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
         try {
           imageUrl = await uploadGemPhoto(sessionId, id, photoFile);
         } catch {
-          // Storage needs the Blaze billing plan enabled — a project on the
-          // free Spark plan throws here on every upload. Surface that
-          // clearly rather than silently dropping the whole gem (the note
-          // and location are still worth saving even without a photo).
           setCreateError(
             "Couldn't upload the photo — Firebase Storage isn't enabled for this project (it needs the Blaze billing plan). Remove the photo to save without one, or enable Storage and try again."
           );
@@ -163,7 +275,7 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDeleteGem(id: string) {
     setSaving(true);
     try {
       await deleteGemDoc(sessionId, id);
@@ -173,30 +285,11 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
     }
   }
 
-  const selectedGem = gems.find((g) => g.id === selectedGemId) ?? null;
+  const selectedGem = trip.hiddenGems.find((g) => g.id === selectedGemId) ?? null;
 
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="absolute inset-0" />
-
-      <div className="glass-panel absolute left-4 top-4 z-10 rounded-2xl p-3 shadow-lg">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Hidden features</p>
-        <p className="mt-1 text-[11px] text-stone-400">
-          {gems.length} feature{gems.length === 1 ? "" : "s"}
-          {saving ? " · saving…" : ""}
-        </p>
-      </div>
-
-      <button
-        onClick={() => setDropMode((v) => !v)}
-        type="button"
-        className={
-          "glass-panel absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium shadow-lg " +
-          (dropMode ? "ring-2 ring-terracotta-400 text-terracotta-700" : "text-stone-600 hover:text-stone-900")
-        }
-      >
-        ✨ {dropMode ? "Click the map to drop it…" : "Drop Hidden Feature"}
-      </button>
 
       {pending && (
         <GemCreateForm
@@ -207,12 +300,12 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
             setPending(null);
             setCreateError(null);
           }}
-          onSave={handleCreate}
+          onSave={handleCreateGem}
         />
       )}
 
       {selectedGem && !pending && (
-        <GemDetailPanel gem={selectedGem} onClose={() => setSelectedGemId(null)} onDelete={() => handleDelete(selectedGem.id)} />
+        <GemDetailPanel gem={selectedGem} onClose={() => setSelectedGemId(null)} onDelete={() => handleDeleteGem(selectedGem.id)} />
       )}
     </div>
   );
@@ -234,7 +327,7 @@ function GemCreateForm({
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [geoLocked, setGeoLocked] = useState(true);
-  const [radiusM, setRadiusM] = useState(String(DEFAULT_RADIUS_M));
+  const [radiusM, setRadiusM] = useState(String(DEFAULT_GEM_RADIUS_M));
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -271,7 +364,7 @@ function GemCreateForm({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.97 }}
         transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
-        className="glass-panel absolute right-4 top-20 z-20 w-80 rounded-2xl p-4 shadow-xl"
+        className="glass-panel absolute right-4 top-4 z-20 w-80 rounded-2xl p-4 shadow-xl"
       >
         <h3 className="text-sm font-semibold tracking-tight text-stone-800">✨ New hidden feature</h3>
         <p className="mt-0.5 text-[11px] text-stone-400">
@@ -364,7 +457,7 @@ function GemDetailPanel({ gem, onClose, onDelete }: { gem: HiddenGem; onClose: (
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.97 }}
         transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
-        className="glass-panel absolute right-4 top-20 z-20 w-80 overflow-hidden rounded-2xl shadow-xl"
+        className="glass-panel absolute right-4 top-4 z-20 w-80 overflow-hidden rounded-2xl shadow-xl"
       >
         {gem.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element -- Firebase Storage downloadURL, not a static asset.

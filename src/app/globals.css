@@ -47,9 +47,23 @@ body {
   color: var(--foreground);
 }
 
-.maplibregl-map {
+/* Scoped to the player-facing map only (tg-tinted-map) — MapLibre's own
+   .maplibregl-map class carries `position: relative` from maplibre-gl.css,
+   which overrides the Tailwind `absolute inset-0` utility on the container
+   at equal specificity (source order wins), so the container would
+   otherwise shrink-wrap instead of filling its parent. The player app's map
+   is always full-viewport so 100vw/100vh was a correct fix there — but the
+   same global rule blew up the Admin dashboard's half-width map pane,
+   forcing it to full viewport size regardless of its actual container. */
+.tg-tinted-map.maplibregl-map {
   width: 100vw !important;
   height: 100vh !important;
+}
+
+/* Every other MapLibre instance (e.g. Admin's map pane) just needs the
+   `position: absolute` back so `inset-0` can stretch it to its container. */
+.maplibregl-map {
+  position: absolute !important;
 }
 
 /* The player-facing map's sepia/premium tint lives on the canvas alone, not

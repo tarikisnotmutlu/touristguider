@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { addDoc, onSnapshot } from "firebase/firestore";
 import {
@@ -11,10 +11,10 @@ import {
   type PlayerTelemetry,
 } from "@/lib/telemetry";
 import { playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
+import { createSession, deletePlayer, deleteSession, sessionExists, subscribeToTrip } from "@/lib/tripSync";
+import type { Trip } from "@/lib/types";
 
-const AdminLiveMap = dynamic(() => import("./AdminLiveMap"), { ssr: false });
-const HiddenGemStudio = dynamic(() => import("./HiddenGemStudio"), { ssr: false });
-const AdminRouteMap = dynamic(() => import("./AdminRouteMap"), { ssr: false });
+const AdminMapPane = dynamic(() => import("./AdminMapPane"), { ssr: false });
 
 const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue"];
 const STALE_MS = 2 * 60 * 1000;
@@ -25,6 +25,8 @@ interface SessionOption {
   id: string;
   title: string;
 }
+
+const EMPTY_TRIP: Trip = { id: "", title: "", days: [], hiddenGems: [], unplanned: [] };
 
 function StatBar({ label, value, invert }: { label: string; value: number; invert?: boolean }) {
   const good = invert ? value < 40 : value > 60;
@@ -43,9 +45,18 @@ function StatBar({ label, value, invert }: { label: string; value: number; inver
   );
 }
 
-function PlayerCard({ player, onAction, pending, now }: {
+function PlayerCard({
+  player,
+  onAction,
+  onMessage,
+  onDelete,
+  pending,
+  now,
+}: {
   player: Player;
   onAction: (playerName: string, action: GmAction) => void;
+  onMessage: (playerName: string) => void;
+  onDelete: (playerName: string) => void;
   pending: boolean;
   now: number;
 }) {
@@ -60,7 +71,17 @@ function PlayerCard({ player, onAction, pending, now }: {
             {new Date(player.timestamp).toLocaleTimeString()}
           </p>
         </div>
-        <span className={`h-2.5 w-2.5 rounded-full ${stale ? "bg-stone-300" : "bg-sage-500"}`} />
+        <div className="flex items-center gap-2">
+          <span className={`h-2.5 w-2.5 rounded-full ${stale ? "bg-stone-300" : "bg-sage-500"}`} />
+          <button
+            type="button"
+            title="Remove this player from the dashboard"
+            onClick={() => onDelete(player.playerName)}
+            className="text-stone-300 hover:text-terracotta-600"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -84,6 +105,14 @@ function PlayerCard({ player, onAction, pending, now }: {
             {GM_ACTION_LABEL[action]}
           </button>
         ))}
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => onMessage(player.playerName)}
+          className="col-span-2 rounded-full bg-sage-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-sage-700 disabled:opacity-40"
+        >
+          💬 Send Message
+        </button>
       </div>
     </div>
   );
@@ -142,41 +171,140 @@ function PinGate({ onAuthed }: { onAuthed: () => void }) {
   );
 }
 
-function SessionSwitcher({ sessions, selectedSessionId, onSelect }: {
-  sessions: SessionOption[];
-  selectedSessionId: string;
-  onSelect: (id: string) => void;
-}) {
+function NewSessionForm({ existingIds, onCreated }: { existingIds: string[]; onCreated: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [id, setId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = id.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!trimmed) return;
+    setCreating(true);
+    setError(null);
+    try {
+      if (existingIds.includes(trimmed) || (await sessionExists(trimmed))) {
+        setError("That session id is already taken.");
+        return;
+      }
+      await createSession(trimmed);
+      setId("");
+      setOpen(false);
+      onCreated(trimmed);
+    } catch {
+      setError("Couldn't create session — try again.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-full bg-sage-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-sage-700"
+      >
+        + New Session
+      </button>
+    );
+  }
+
   return (
-    <select
-      value={selectedSessionId}
-      onChange={(e) => onSelect(e.target.value)}
-      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 focus:border-sage-400 focus:outline-none"
-    >
-      {sessions.length === 0 && <option value="">No sessions yet</option>}
-      {sessions.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.title} ({s.id})
-        </option>
-      ))}
-    </select>
+    <form onSubmit={handleCreate} className="flex items-center gap-1.5">
+      <input
+        autoFocus
+        value={id}
+        onChange={(e) => setId(e.target.value)}
+        placeholder="session-id"
+        className="w-36 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+      />
+      <button
+        type="submit"
+        disabled={creating || !id.trim()}
+        className="rounded-full bg-sage-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sage-700 disabled:opacity-40"
+      >
+        {creating ? "…" : "Create"}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(false);
+          setError(null);
+          setId("");
+        }}
+        className="rounded-full px-2.5 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-100"
+      >
+        Cancel
+      </button>
+      {error && <span className="text-[11px] text-terracotta-600">{error}</span>}
+    </form>
   );
 }
 
-type AdminTab = "gm" | "gems" | "routes";
+function MessageForm({ playerName, onSend, onCancel, sending }: {
+  playerName: string;
+  onSend: (text: string) => void;
+  onCancel: () => void;
+  sending: boolean;
+}) {
+  const [text, setText] = useState("");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (text.trim()) onSend(text.trim());
+      }}
+      className="glass-panel fixed inset-0 z-50 flex items-center justify-center bg-stone-900/30 p-4"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="w-80 rounded-2xl bg-white p-4 shadow-xl">
+        <h3 className="text-sm font-semibold tracking-tight text-stone-800">💬 Message {playerName}</h3>
+        <p className="mt-0.5 text-[11px] text-stone-400">Only {playerName} will see this, on their screen.</p>
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder="Type a message…"
+          className="mt-2 w-full rounded-lg border border-stone-200 p-2 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+        />
+        <div className="mt-3 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="rounded-full px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-100">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={sending || !text.trim()}
+            className="rounded-full bg-sage-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-sage-700 disabled:opacity-40"
+          >
+            {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
 
-/** The Game Master dashboard — a Session Switcher dropdown (real-time, so a
- *  brand-new session shows up the moment its first player joins) replaces
- *  the old URL-encoded trip id; every tab (live player stats, Hidden
- *  Feature Studio, Route Map) reads/writes whichever session is selected. */
+/** The Game Master dashboard — a single always-visible pane (no tabs): a
+ *  session switcher (create/delete), a day selector + route/gem toggles
+ *  driving one shared map, and a player roster with GM actions, targeted
+ *  messaging, and deletion, all live via Firestore onSnapshot. */
 export default function AdminDashboard() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<AdminTab>("gm");
   const [sessions, setSessions] = useState<SessionOption[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [pendingPlayerName, setPendingPlayerName] = useState<string | null>(null);
   const [resettingAll, setResettingAll] = useState(false);
+  const [deletingSession, setDeletingSession] = useState(false);
+  const [messageTarget, setMessageTarget] = useState<string | null>(null);
+
+  const [trip, setTrip] = useState<Trip>(EMPTY_TRIP);
+  const [dayIndex, setDayIndex] = useState(0);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [dropGemMode, setDropGemMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +344,23 @@ export default function AdminDashboard() {
     return unsub;
   }, [authed, selectedSessionId]);
 
+  useEffect(() => {
+    if (!authed || !selectedSessionId) {
+      const timer = setTimeout(() => setTrip(EMPTY_TRIP), 0);
+      return () => clearTimeout(timer);
+    }
+    const unsub = subscribeToTrip(selectedSessionId, setTrip);
+    return unsub;
+  }, [authed, selectedSessionId]);
+
+  function selectSession(id: string) {
+    setSelectedSessionId(id);
+    setDayIndex(0);
+    setDropGemMode(false);
+  }
+
+  const safeDayIndex = Math.min(dayIndex, Math.max(0, trip.days.length - 1));
+
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
@@ -229,6 +374,38 @@ export default function AdminDashboard() {
       await addDoc(playerOverridesCollection(selectedSessionId, playerName), override);
     } finally {
       setPendingPlayerName(null);
+    }
+  }
+
+  async function handleSendMessage(playerName: string, text: string) {
+    setPendingPlayerName(playerName);
+    try {
+      const override: GmOverride = { action: "message", text, createdAt: Date.now() };
+      await addDoc(playerOverridesCollection(selectedSessionId, playerName), override);
+      setMessageTarget(null);
+    } finally {
+      setPendingPlayerName(null);
+    }
+  }
+
+  async function handleDeletePlayer(playerName: string) {
+    if (!confirm(`Remove ${playerName} from this session's dashboard?`)) return;
+    setPendingPlayerName(playerName);
+    try {
+      await deletePlayer(selectedSessionId, playerName);
+    } finally {
+      setPendingPlayerName(null);
+    }
+  }
+
+  async function handleDeleteSession() {
+    if (!selectedSessionId) return;
+    if (!confirm(`Permanently delete session "${selectedSessionId}" and all its days, gems, and players?`)) return;
+    setDeletingSession(true);
+    try {
+      await deleteSession(selectedSessionId);
+    } finally {
+      setDeletingSession(false);
     }
   }
 
@@ -265,46 +442,107 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex h-dvh w-full flex-col bg-stone-50">
-      <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-2">
-        <TabButton active={tab === "gm"} onClick={() => setTab("gm")}>
-          🎩 Game Master
-        </TabButton>
-        <TabButton active={tab === "gems"} onClick={() => setTab("gems")}>
-          ✨ Hidden Feature Studio
-        </TabButton>
-        <TabButton active={tab === "routes"} onClick={() => setTab("routes")}>
-          🗺️ Route Map
-        </TabButton>
-        <div className="ml-auto">
-          <SessionSwitcher sessions={sessions} selectedSessionId={selectedSessionId} onSelect={setSelectedSessionId} />
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-stone-200 bg-white px-4 py-2">
+        <h1 className="text-sm font-bold tracking-tight text-stone-800">🎩 Game Master</h1>
+
+        <select
+          value={selectedSessionId}
+          onChange={(e) => selectSession(e.target.value)}
+          className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 focus:border-sage-400 focus:outline-none"
+        >
+          {sessions.length === 0 && <option value="">No sessions yet</option>}
+          {sessions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.title} ({s.id})
+            </option>
+          ))}
+        </select>
+
+        <NewSessionForm existingIds={sessions.map((s) => s.id)} onCreated={selectSession} />
+
+        {selectedSessionId && (
+          <button
+            type="button"
+            onClick={handleDeleteSession}
+            disabled={deletingSession}
+            className="rounded-full bg-terracotta-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-terracotta-700 disabled:opacity-40"
+          >
+            {deletingSession ? "Deleting…" : "Delete Session"}
+          </button>
+        )}
+
+        {selectedSessionId && trip.days.length > 0 && (
+          <div className="ml-2 flex items-center gap-1.5">
+            {trip.days.map((d, i) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDayIndex(i)}
+                className={
+                  "rounded-full px-2.5 py-1 text-xs font-medium transition-colors " +
+                  (i === safeDayIndex ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200")
+                }
+              >
+                {d.label || `Day ${i + 1}`}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selectedSessionId && (
+          <label className="flex items-center gap-1.5 text-xs font-medium text-stone-600">
+            <input type="checkbox" checked={showRoutes} onChange={(e) => setShowRoutes(e.target.checked)} className="accent-sage-600" />
+            Show routes
+          </label>
+        )}
+
+        {selectedSessionId && (
+          <button
+            type="button"
+            onClick={() => setDropGemMode((v) => !v)}
+            className={
+              "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors " +
+              (dropGemMode ? "bg-terracotta-600 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200")
+            }
+          >
+            {dropGemMode ? "Click map to place ✨" : "✨ Add Hidden Feature"}
+          </button>
+        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-stone-400">
+            {players.length} traveler{players.length === 1 ? "" : "s"}
+          </span>
+          <button
+            onClick={handleResetAllStats}
+            disabled={resettingAll || players.length === 0}
+            type="button"
+            title="Reset hunger, thirst, fatigue, and cat count for every traveler"
+            className="rounded-full bg-terracotta-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-terracotta-700 disabled:opacity-40"
+          >
+            {resettingAll ? "Resetting…" : "🔄 Reset All Stats"}
+          </button>
         </div>
       </div>
 
       {!selectedSessionId ? (
         <div className="flex flex-1 items-center justify-center text-sm text-stone-400">
-          No sessions yet — one appears here the moment a traveler joins.
+          No sessions yet — create one above, or wait for a traveler to join.
         </div>
-      ) : tab === "gm" ? (
+      ) : (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <div className="h-64 shrink-0 border-b border-stone-200 lg:h-auto lg:w-1/2 lg:border-b-0 lg:border-r">
-            <AdminLiveMap players={players} />
+          <div className="h-72 shrink-0 border-b border-stone-200 lg:h-auto lg:w-1/2 lg:border-b-0 lg:border-r">
+            <AdminMapPane
+              sessionId={selectedSessionId}
+              trip={trip}
+              dayIndex={safeDayIndex}
+              showRoutes={showRoutes}
+              dropGemMode={dropGemMode}
+              onExitDropGemMode={() => setDropGemMode(false)}
+              players={players}
+            />
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <h1 className="text-lg font-bold tracking-tight text-stone-800">🎩 Game Master Dashboard</h1>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-stone-400">{players.length} traveler{players.length === 1 ? "" : "s"}</span>
-                <button
-                  onClick={handleResetAllStats}
-                  disabled={resettingAll || players.length === 0}
-                  type="button"
-                  title="Reset hunger, thirst, fatigue, and cat count for every traveler"
-                  className="rounded-full bg-terracotta-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-terracotta-700 disabled:opacity-40"
-                >
-                  {resettingAll ? "Resetting…" : "🔄 Reset All Stats"}
-                </button>
-              </div>
-            </div>
             {players.length === 0 ? (
               <p className="text-sm text-stone-400">No travelers checked in yet.</p>
             ) : (
@@ -314,6 +552,8 @@ export default function AdminDashboard() {
                     key={p.playerName}
                     player={p}
                     onAction={handleAction}
+                    onMessage={setMessageTarget}
+                    onDelete={handleDeletePlayer}
                     pending={pendingPlayerName === p.playerName}
                     now={now}
                   />
@@ -322,30 +562,16 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
-      ) : tab === "gems" ? (
-        <div className="min-h-0 flex-1">
-          <HiddenGemStudio sessionId={selectedSessionId} />
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1">
-          <AdminRouteMap sessionId={selectedSessionId} />
-        </div>
+      )}
+
+      {messageTarget && (
+        <MessageForm
+          playerName={messageTarget}
+          sending={pendingPlayerName === messageTarget}
+          onCancel={() => setMessageTarget(null)}
+          onSend={(text) => handleSendMessage(messageTarget, text)}
+        />
       )}
     </div>
-  );
-}
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      type="button"
-      className={
-        "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors " +
-        (active ? "bg-stone-800 text-white" : "text-stone-500 hover:bg-stone-100")
-      }
-    >
-      {children}
-    </button>
   );
 }

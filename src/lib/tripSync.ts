@@ -1,4 +1,4 @@
-import { deleteDoc, getDoc, onSnapshot, runTransaction, setDoc, writeBatch } from "firebase/firestore";
+import { deleteDoc, getDoc, getDocs, onSnapshot, runTransaction, setDoc, writeBatch } from "firebase/firestore";
 import { getDb } from "./firebase";
 import {
   dayDocRef,
@@ -6,7 +6,10 @@ import {
   gemsCollection,
   itineraryCollection,
   playerDocRef,
+  playerOverridesCollection,
+  playersCollection,
   sessionDocRef,
+  sessionsCollection,
 } from "./firestorePaths";
 import type { Day, HiddenGem, LatLng, RouteSegment, Trip, UnplannedPlace } from "./types";
 import { ROUTABLE_MODES } from "./types";
@@ -96,6 +99,59 @@ export async function ensureSessionExists(sessionId: string): Promise<void> {
   });
   resolvedDays.forEach((day) => batch.set(dayDocRef(sessionId, day.id), dayToDoc(day)));
   await batch.commit();
+}
+
+// ---- admin: session & player management ----
+
+export async function sessionExists(sessionId: string): Promise<boolean> {
+  const snap = await getDoc(sessionDocRef(sessionId));
+  return snap.exists();
+}
+
+/** Explicit Game Master "New Session" action — unlike ensureSessionExists
+ *  (which is fine reusing an existing session so a returning player's link
+ *  keeps working), this is a deliberate create and the caller is expected
+ *  to have already confirmed the id is free via sessionExists first. */
+export async function createSession(sessionId: string): Promise<void> {
+  await ensureSessionExists(sessionId);
+}
+
+/** Deletes a session and everything under it: itinerary days, gems, and
+ *  every player (each with its own overrides subcollection first, since
+ *  Firestore never cascade-deletes subcollections on its own). */
+export async function deleteSession(sessionId: string): Promise<void> {
+  const [days, gems, players] = await Promise.all([
+    getDocs(itineraryCollection(sessionId)),
+    getDocs(gemsCollection(sessionId)),
+    getDocs(playersCollection(sessionId)),
+  ]);
+
+  await Promise.all(players.docs.map((p) => deletePlayer(sessionId, p.id)));
+
+  const batch = writeBatch(getDb());
+  days.docs.forEach((d) => batch.delete(dayDocRef(sessionId, d.id)));
+  gems.docs.forEach((g) => batch.delete(gemDocRef(sessionId, g.id)));
+  batch.delete(sessionDocRef(sessionId));
+  await batch.commit();
+}
+
+/** Removes a player from the dashboard (their telemetry doc + any queued
+ *  overrides) — a "kick"/cleanup action, not a ban: if their app is still
+ *  open and still posting telemetry, they'll simply reappear on their next
+ *  ~20s beat. */
+export async function deletePlayer(sessionId: string, playerName: string): Promise<void> {
+  const overrides = await getDocs(playerOverridesCollection(sessionId, playerName));
+  const batch = writeBatch(getDb());
+  overrides.docs.forEach((o) => batch.delete(o.ref));
+  batch.delete(playerDocRef(sessionId, playerName));
+  await batch.commit();
+}
+
+/** One-time (non-realtime) list of every session — used to check "does this
+ *  id already exist" before creating, without holding a listener open. */
+export async function listSessionIds(): Promise<string[]> {
+  const snap = await getDocs(sessionsCollection());
+  return snap.docs.map((d) => d.id);
 }
 
 /** Real-time listener across the session meta doc + itinerary + gems
