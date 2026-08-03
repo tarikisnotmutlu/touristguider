@@ -1,4 +1,4 @@
-import { deleteDoc, getDoc, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
+import { deleteDoc, getDoc, onSnapshot, runTransaction, setDoc, writeBatch } from "firebase/firestore";
 import { getDb } from "./firebase";
 import {
   dayDocRef,
@@ -10,7 +10,7 @@ import {
 import type { Day, HiddenGem, RouteSegment, Trip, UnplannedPlace } from "./types";
 import { ROUTABLE_MODES } from "./types";
 import { normalizeTrip } from "./normalize";
-import { fetchRoute } from "./osrmHttp";
+import { fetchRoute } from "./orsHttp";
 import { estimateDurationMin, haversineMeters } from "./geo";
 import { recomputeDayTimes } from "./time";
 import { pointBefore } from "./dayHelpers";
@@ -46,13 +46,29 @@ export function gemToDoc(gem: HiddenGem): GemDoc {
 }
 
 /** First time this session id has ever been used — seeds it with a fresh
- *  demo trip, fully OSRM-resolved up front (this is a one-time creation, not
+ *  demo trip, fully ORS-resolved up front (this is a one-time creation, not
  *  an edit-mode session, so there's no "defer until Save" to apply here —
  *  otherwise a brand new session would show no routes at all until someone
- *  entered and left Edit Mode once). */
+ *  entered and left Edit Mode once).
+ *
+ *  The "does it exist" check and the (slow — a real ORS fetch per stop)
+ *  route resolution used to be two separate steps, which raced: two
+ *  concurrent callers (two friends opening the same brand-new session link
+ *  at once, or a dev-mode double-effect-invoke) could both see "doesn't
+ *  exist yet" and each write their own copy of the demo trip, doubling up
+ *  every day. Claiming the session via a transaction FIRST — instantly,
+ *  before any slow work — means a second concurrent caller's transaction
+ *  sees it already claimed and backs off immediately instead of also
+ *  resolving and writing its own copy. */
 export async function ensureSessionExists(sessionId: string): Promise<void> {
-  const existing = await getDoc(sessionDocRef(sessionId));
-  if (existing.exists()) return;
+  const claimed = await runTransaction(getDb(), async (tx) => {
+    const snap = await tx.get(sessionDocRef(sessionId));
+    if (snap.exists()) return false;
+    tx.set(sessionDocRef(sessionId), { title: "Untitled Trip", dayOrder: [], unplanned: [] });
+    return true;
+  });
+  if (!claimed) return;
+
   const demo = createDemoTrip();
   const resolvedDays = await Promise.all(demo.days.map((day) => resolveDayRoutes(day, undefined)));
   const batch = writeBatch(getDb());
@@ -143,11 +159,11 @@ export function subscribeToTrip(sessionId: string, onChange: (trip: Trip) => voi
   };
 }
 
-// ---- deferred-OSRM delta save (Priority 3) ----
+// ---- deferred-ORS delta save (Priority 3) ----
 
 /** A snapshot of the trip taken the instant Edit Mode was entered — the
  *  baseline every edge gets diffed against on Save, so only edges an edit
- *  actually touched get a fresh OSRM fetch. Module-level rather than
+ *  actually touched get a fresh ORS fetch. Module-level rather than
  *  component state: it's write-once/read-once bookkeeping for exactly one
  *  edit session, not something any component needs to re-render on. */
 let editSnapshot: Trip | null = null;
@@ -195,8 +211,8 @@ function unchangedEdgesOf(day: Day, oldDay: Day | undefined): Map<string, RouteS
 /**
  * Resolves every routable edge in `day`: reuses the cached geometry from
  * `oldDay` (if given) when that specific edge is unchanged since then,
- * otherwise fetches OSRM fresh (falling back to a straight-line-through-
- * waypoints estimate if OSRM fails). Non-routable edges (transit/ferry) are
+ * otherwise fetches ORS fresh (falling back to a straight-line-through-
+ * waypoints estimate if ORS fails). Non-routable edges (transit/ferry) are
  * always cheap to recompute directly, `oldDay` or not.
  */
 async function resolveDayRoutes(day: Day, oldDay: Day | undefined): Promise<Day> {
@@ -261,7 +277,7 @@ async function resolveDayRoutes(day: Day, oldDay: Day | undefined): Promise<Day>
 
 /**
  * Called once, when the user hits "Done" to leave Edit Mode. Diffs every
- * day against the edit-start snapshot and only re-fetches OSRM for edges
+ * day against the edit-start snapshot and only re-fetches ORS for edges
  * that actually changed; everything else reuses its cached geometry.
  * Finally batch-writes the resolved trip to Firestore.
  */

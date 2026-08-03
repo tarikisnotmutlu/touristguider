@@ -38,6 +38,7 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
   const [pending, setPending] = useState<PendingGem | null>(null);
   const [selectedGemId, setSelectedGemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -68,6 +69,7 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
     map.on("click", (e: maplibregl.MapMouseEvent) => {
       if (!dropModeRef.current) return;
       setPending({ point: { lat: e.lngLat.lat, lng: e.lngLat.lng } });
+      setCreateError(null);
       setDropMode(false);
     });
 
@@ -135,12 +137,29 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
   async function handleCreate(gem: Omit<HiddenGem, "id" | "createdAt" | "imageUrl">, photoFile: File | null) {
     const id = genId();
     setSaving(true);
+    setCreateError(null);
     try {
-      const imageUrl = photoFile ? await uploadGemPhoto(sessionId, id, photoFile) : undefined;
+      let imageUrl: string | undefined;
+      if (photoFile) {
+        try {
+          imageUrl = await uploadGemPhoto(sessionId, id, photoFile);
+        } catch {
+          // Storage needs the Blaze billing plan enabled — a project on the
+          // free Spark plan throws here on every upload. Surface that
+          // clearly rather than silently dropping the whole gem (the note
+          // and location are still worth saving even without a photo).
+          setCreateError(
+            "Couldn't upload the photo — Firebase Storage isn't enabled for this project (it needs the Blaze billing plan). Remove the photo to save without one, or enable Storage and try again."
+          );
+          return;
+        }
+      }
       await saveGemDoc(sessionId, { ...gem, imageUrl, id, createdAt: Date.now() });
+      setPending(null);
+    } catch {
+      setCreateError("Couldn't save — try again.");
     } finally {
       setSaving(false);
-      setPending(null);
     }
   }
 
@@ -179,7 +198,18 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
         ✨ {dropMode ? "Click the map to drop it…" : "Drop Hidden Feature"}
       </button>
 
-      {pending && <GemCreateForm point={pending.point} onCancel={() => setPending(null)} onSave={handleCreate} />}
+      {pending && (
+        <GemCreateForm
+          point={pending.point}
+          error={createError}
+          saving={saving}
+          onCancel={() => {
+            setPending(null);
+            setCreateError(null);
+          }}
+          onSave={handleCreate}
+        />
+      )}
 
       {selectedGem && !pending && (
         <GemDetailPanel gem={selectedGem} onClose={() => setSelectedGemId(null)} onDelete={() => handleDelete(selectedGem.id)} />
@@ -190,10 +220,14 @@ export default function HiddenGemStudio({ sessionId }: { sessionId: string }) {
 
 function GemCreateForm({
   point,
+  error,
+  saving,
   onSave,
   onCancel,
 }: {
   point: LatLng;
+  error: string | null;
+  saving: boolean;
   onSave: (gem: Omit<HiddenGem, "id" | "createdAt" | "imageUrl">, photoFile: File | null) => void;
   onCancel: () => void;
 }) {
@@ -266,10 +300,24 @@ function GemCreateForm({
             className="text-xs text-stone-600 file:mr-2 file:rounded-full file:border-0 file:bg-terracotta-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-terracotta-700 hover:file:bg-terracotta-200"
           />
           {previewUrl && (
-            // eslint-disable-next-line @next/next/no-img-element -- local blob: preview, not a static asset.
-            <img src={previewUrl} alt="" className="h-24 w-full rounded-lg object-cover" />
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local blob: preview, not a static asset. */}
+              <img src={previewUrl} alt="" className="h-24 w-full rounded-lg object-cover" />
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoFile(null);
+                  setPreviewUrl(null);
+                }}
+                title="Remove photo"
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-stone-900/60 text-xs text-white hover:bg-stone-900/80"
+              >
+                ✕
+              </button>
+            </div>
           )}
         </label>
+        {error && <p className="mt-2 text-[11px] leading-relaxed text-terracotta-600">{error}</p>}
         <label className="mt-2.5 flex items-center gap-2 text-xs text-stone-600">
           Trigger radius
           <input
@@ -297,10 +345,10 @@ function GemCreateForm({
           </button>
           <button
             type="submit"
-            disabled={!canSave}
+            disabled={!canSave || saving}
             className="rounded-full bg-terracotta-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-terracotta-700 disabled:opacity-40"
           >
-            Save feature
+            {saving ? "Saving…" : "Save feature"}
           </button>
         </div>
       </motion.form>
