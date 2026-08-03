@@ -374,15 +374,25 @@ export default function MapView() {
           const routable = ROUTABLE_MODES.includes(route.mode);
           const isUnresolved = routable && !route.geometryResolved;
           // While Edit Mode is on, routes are never fetched (see the removed
-          // fetch effect above) — every unresolved routable segment renders
-          // as an instant straight line through its endpoints/manual
-          // waypoints instead, kept deliberately simple/synchronous for
-          // 60fps dragging. Outside Edit Mode this should be rare (routes
-          // are fully resolved by ensureSessionExists/Save before a viewer
-          // ever sees them), but the old "gap, then degrade after retries
-          // give up" fallback stays as a safety net for that case.
+          // fetch effect above) — EVERY routable segment (not just ones that
+          // happen to be unresolved) renders as an instant straight line
+          // through its endpoints/manual waypoints instead of its last-known
+          // curve, kept deliberately simple/synchronous for 60fps dragging.
+          // This matters even for a segment that was already resolved
+          // before Edit Mode began: `route.geometryResolved` doesn't flip
+          // to false just because a waypoint got dragged onto it, so
+          // without this the map (and the invisible hit-test line, which
+          // shares this same source/geometry) would keep showing/hit-testing
+          // the OLD curve — the drag would visually appear to do nothing,
+          // and a second drag near the new line's actual on-screen position
+          // would increasingly miss the stale hitbox the more the real
+          // curve deviates from a straight line. Outside Edit Mode this
+          // placeholder never applies (routes are fully resolved by
+          // ensureSessionExists/Save before a viewer ever sees them), but
+          // the old "gap, then degrade after retries give up" fallback
+          // stays as a safety net for that case.
           const degraded = !isEditMode && isUnresolved && !!route.geometryDegraded;
-          const showPlaceholder = isEditMode && isUnresolved;
+          const showPlaceholder = isEditMode && routable;
 
           if (!isEditMode && isUnresolved && !degraded) return;
 
