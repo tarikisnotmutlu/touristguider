@@ -147,6 +147,7 @@ export default function MapView() {
   const activeStepId = useTripStore((s) => s.activeStepId);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
   const movingStepId = useJourneyStore((s) => s.movingStepId);
+  const movingStartPointDayId = useJourneyStore((s) => s.movingStartPointDayId);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const panelView = useJourneyStore((s) => s.panelView);
   const day = trip.days[activeDayIndex];
@@ -268,16 +269,27 @@ export default function MapView() {
     // stale. Adding a stop is never done via a map click (see AddCustomStopForm's
     // explicit coordinate paste instead) — this is the ONLY place a plain map
     // click can affect the itinerary at all, and only while repositioning an
-    // existing step, never for creating one.
+    // existing step or the day's start point, never for creating one.
     map.on("click", (e: maplibregl.MapMouseEvent) => {
       const journey = useJourneyStore.getState();
-      if (!journey.isEditMode || !journey.movingStepId) return;
-      const stepId = journey.movingStepId;
-      journey.setMovingStepId(null);
-      const tripState = useTripStore.getState();
-      const ownerDay = tripState.trip.days.find((d) => d.steps.some((s) => s.id === stepId));
-      if (ownerDay) {
-        tripState.moveStep(ownerDay.id, stepId, { lat: e.lngLat.lat, lng: e.lngLat.lng });
+      if (!journey.isEditMode) return;
+      const point = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+
+      if (journey.movingStartPointDayId) {
+        const dayId = journey.movingStartPointDayId;
+        journey.setMovingStartPointDayId(null);
+        useTripStore.getState().moveDayStartPoint(dayId, point);
+        return;
+      }
+
+      if (journey.movingStepId) {
+        const stepId = journey.movingStepId;
+        journey.setMovingStepId(null);
+        const tripState = useTripStore.getState();
+        const ownerDay = tripState.trip.days.find((d) => d.steps.some((s) => s.id === stepId));
+        if (ownerDay) {
+          tripState.moveStep(ownerDay.id, stepId, point);
+        }
       }
     });
 
@@ -351,8 +363,9 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = dragState ? "grabbing" : movingStepId ? "crosshair" : "";
-  }, [dragState, movingStepId]);
+    map.getCanvas().style.cursor =
+      dragState ? "grabbing" : movingStepId || movingStartPointDayId ? "crosshair" : "";
+  }, [dragState, movingStepId, movingStartPointDayId]);
 
   // Routes are never fetched live from MapView anymore — per the deferred-
   // OSRM architecture (see tripSync.ts), a session's routes are resolved

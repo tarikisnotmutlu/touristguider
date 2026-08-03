@@ -68,6 +68,12 @@ interface JourneyState {
   movingStepId: string | null;
   setMovingStepId: (stepId: string | null) => void;
 
+  /** Same one-shot pattern as movingStepId, for the day's start point
+   *  instead of a step — set to the day's id while the visitor is
+   *  repositioning it via its own "Adjust pin location" button. */
+  movingStartPointDayId: string | null;
+  setMovingStartPointDayId: (dayId: string | null) => void;
+
   /** Which pill tab is showing in the panel, persisted so a refresh mid-trip
    *  doesn't dump the friend back to a random tab. When panelView is "day",
    *  `savedDayIndex` says which one — useTripStore.activeDayIndex is the
@@ -152,10 +158,14 @@ export const useJourneyStore = create<JourneyState>()(
   persist(
     (set, get) => ({
       isEditMode: false,
-      toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode, movingStepId: null })),
+      toggleEditMode: () =>
+        set((s) => ({ isEditMode: !s.isEditMode, movingStepId: null, movingStartPointDayId: null })),
 
       movingStepId: null,
       setMovingStepId: (stepId) => set({ movingStepId: stepId }),
+
+      movingStartPointDayId: null,
+      setMovingStartPointDayId: (dayId) => set({ movingStartPointDayId: dayId }),
 
       panelView: "day",
       savedDayIndex: 0,

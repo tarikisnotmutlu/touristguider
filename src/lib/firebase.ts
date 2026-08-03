@@ -38,6 +38,13 @@ export function getDb(): Firestore {
   if (firestoreSingleton) return firestoreSingleton;
   firestoreSingleton = initializeFirestore(getFirebaseApp(), {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    // Trip/gem/route documents are full of optional fields (imageUrl,
+    // transitLine, a gem's name, geometryDegraded, ...) that get spread into
+    // a write as `undefined` when unset — Firestore's default is to reject
+    // the entire write with "Unsupported field value: undefined" rather
+    // than just omitting that key. This is exactly why saving a Hidden Gem
+    // without a photo (imageUrl left undefined) failed outright.
+    ignoreUndefinedProperties: true,
   });
   return firestoreSingleton;
 }

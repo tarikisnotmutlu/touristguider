@@ -8,7 +8,7 @@ import {
   playerDocRef,
   sessionDocRef,
 } from "./firestorePaths";
-import type { Day, HiddenGem, RouteSegment, Trip, UnplannedPlace } from "./types";
+import type { Day, HiddenGem, LatLng, RouteSegment, Trip, UnplannedPlace } from "./types";
 import { ROUTABLE_MODES } from "./types";
 import type { PlayerTelemetry } from "./telemetry";
 import { normalizeTrip } from "./normalize";
@@ -197,8 +197,15 @@ function edgeIdentity(fromId: string, toId: string): string {
   return `${fromId}=>${toId}`;
 }
 
-function edgeFingerprint(route: RouteSegment): string {
-  return `${route.mode}|${JSON.stringify(route.manualWaypoints)}`;
+// Coordinates are part of the fingerprint, not just mode/manualWaypoints —
+// moving a step (or the day's start point) via "Adjust pin location" keeps
+// the same edge identity (same step ids either side) and the same
+// mode/manualWaypoints, so without the actual endpoint coordinates here,
+// this would consider the edge "unchanged" and reuse its stale pre-move
+// geometry: the saved route would visibly not connect to the marker's new
+// position at all.
+function edgeFingerprint(route: RouteSegment, from: LatLng, to: LatLng): string {
+  return `${route.mode}|${from.lat},${from.lng}|${to.lat},${to.lng}|${JSON.stringify(route.manualWaypoints)}`;
 }
 
 /** Diffs `day` against its counterpart in the edit-start snapshot (if any)
@@ -208,18 +215,26 @@ function edgeFingerprint(route: RouteSegment): string {
 function unchangedEdgesOf(day: Day, oldDay: Day | undefined): Map<string, RouteSegment> {
   const map = new Map<string, RouteSegment>();
   if (!oldDay) return map;
-  const oldEdgeByIdentity = new Map<string, RouteSegment>();
+  const oldEdgeByIdentity = new Map<string, { route: RouteSegment; fingerprint: string }>();
   oldDay.steps.forEach((s, i) => {
     const fromId = i === 0 ? `start:${oldDay.id}` : oldDay.steps[i - 1].id;
-    oldEdgeByIdentity.set(edgeIdentity(fromId, s.id), oldDay.routes[i]);
+    const from = pointBefore(oldDay, i);
+    const to: LatLng = { lat: s.lat, lng: s.lng };
+    oldEdgeByIdentity.set(edgeIdentity(fromId, s.id), {
+      route: oldDay.routes[i],
+      fingerprint: edgeFingerprint(oldDay.routes[i], from, to),
+    });
   });
   day.steps.forEach((s, i) => {
     const fromId = i === 0 ? `start:${day.id}` : day.steps[i - 1].id;
     const identity = edgeIdentity(fromId, s.id);
-    const oldRoute = oldEdgeByIdentity.get(identity);
-    const newRoute = day.routes[i];
-    if (oldRoute && oldRoute.geometryResolved && edgeFingerprint(oldRoute) === edgeFingerprint(newRoute)) {
-      map.set(identity, oldRoute);
+    const oldEntry = oldEdgeByIdentity.get(identity);
+    if (!oldEntry || !oldEntry.route.geometryResolved) return;
+    const from = pointBefore(day, i);
+    const to: LatLng = { lat: s.lat, lng: s.lng };
+    const newFingerprint = edgeFingerprint(day.routes[i], from, to);
+    if (oldEntry.fingerprint === newFingerprint) {
+      map.set(identity, oldEntry.route);
     }
   });
   return map;

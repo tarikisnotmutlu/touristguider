@@ -95,6 +95,10 @@ interface TripState {
   setDayLabel: (dayId: string, label: string) => void;
   setDayStartTime: (dayId: string, value: string) => void;
   setDayStartPoint: (dayId: string, point: { name: string; lat: number; lng: number }) => void;
+  /** Repositions the day's start point without touching its name — the
+   *  "Adjust pin location" / coordinate-paste precision path, as opposed to
+   *  setDayStartPoint's name+place search flow. */
+  moveDayStartPoint: (dayId: string, point: LatLng) => void;
 
   addStep: (
     dayId: string,
@@ -281,6 +285,16 @@ export const useTripStore = create<TripState>()(
         if (!day) return;
         recordHistory(state);
         day.startPoint = point;
+        day.routes = rebuildRoutes(day);
+        recalcDay(day);
+      }),
+
+    moveDayStartPoint: (dayId, point) =>
+      set((state) => {
+        const { day } = findDay(state.trip, dayId);
+        if (!day) return;
+        recordHistory(state);
+        day.startPoint = { ...day.startPoint, lat: point.lat, lng: point.lng };
         day.routes = rebuildRoutes(day);
         recalcDay(day);
       }),
