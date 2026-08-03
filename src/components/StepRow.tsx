@@ -7,7 +7,7 @@ import clsx from "clsx";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import type { Step } from "@/lib/types";
-import { CATEGORY_TAG } from "@/lib/categories";
+import { ALL_CATEGORIES, CATEGORY_LABEL, CATEGORY_TAG, type PlaceCategory } from "@/lib/categories";
 
 const SPRING = { type: "spring", bounce: 0.15, duration: 0.5 } as const;
 
@@ -146,9 +146,25 @@ export default function StepRow({ dayId, step, index }: { dayId: string; step: S
             </span>
           )}
           <div className="flex flex-none items-center gap-1.5">
-            <span className="flex-none whitespace-nowrap rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-600">
-              {tag.text}
-            </span>
+            {isEditMode ? (
+              <select
+                value={step.category}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => updateStep(dayId, step.id, { category: e.target.value as PlaceCategory })}
+                title="Change category"
+                className="flex-none rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-600 focus:border-sage-400 focus:outline-none"
+              >
+                {ALL_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {CATEGORY_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="flex-none whitespace-nowrap rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-600">
+                {tag.text}
+              </span>
+            )}
             {step.arrival && (
               <span className="flex-none whitespace-nowrap text-xs font-medium text-stone-500">{step.arrival}</span>
             )}

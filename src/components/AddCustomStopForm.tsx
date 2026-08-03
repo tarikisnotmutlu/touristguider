@@ -1,29 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import { parseLatLngPaste } from "@/lib/geo";
 
 /** Edit-mode-only manual entry for a stop that isn't in the search index —
- *  just a name plus raw coordinates, no category inference needed. */
+ *  a name plus a single pasted "Lat, Lng" coordinate pair (e.g.
+ *  "41.014568, 28.974133"), no category inference needed. Adding a stop
+ *  never happens via a map click (see MapView) — this and the search box
+ *  above it are the only two ways to add one. */
 export default function AddCustomStopForm({
   onAdd,
 }: {
   onAdd: (name: string, lat: number, lng: number) => void;
 }) {
   const [name, setName] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
+  const [coords, setCoords] = useState("");
 
-  const latNum = Number(lat);
-  const lngNum = Number(lng);
-  const canAdd = name.trim().length > 0 && lat.trim() !== "" && lng.trim() !== "" && !Number.isNaN(latNum) && !Number.isNaN(lngNum);
+  const parsed = parseLatLngPaste(coords);
+  const canAdd = name.trim().length > 0 && parsed !== null;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canAdd) return;
-    onAdd(name.trim(), latNum, lngNum);
+    if (!canAdd || !parsed) return;
+    onAdd(name.trim(), parsed.lat, parsed.lng);
     setName("");
-    setLat("");
-    setLng("");
+    setCoords("");
   }
 
   return (
@@ -37,20 +38,10 @@ export default function AddCustomStopForm({
       />
       <div className="flex gap-1.5">
         <input
-          value={lat}
-          onChange={(e) => setLat(e.target.value)}
-          type="number"
-          step="any"
-          placeholder="Latitude"
-          className="w-1/2 rounded-full border border-stone-200 bg-white/80 px-3.5 py-2 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
-        />
-        <input
-          value={lng}
-          onChange={(e) => setLng(e.target.value)}
-          type="number"
-          step="any"
-          placeholder="Longitude"
-          className="w-1/2 rounded-full border border-stone-200 bg-white/80 px-3.5 py-2 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+          value={coords}
+          onChange={(e) => setCoords(e.target.value)}
+          placeholder="Lat, Lng — e.g. 41.014568, 28.974133"
+          className="w-full rounded-full border border-stone-200 bg-white/80 px-3.5 py-2 text-sm text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
         />
         <button
           type="submit"

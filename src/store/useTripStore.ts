@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { Day, HiddenGem, LatLng, RouteSegment, Step, TransportMode, Trip } from "@/lib/types";
+import type { Day, LatLng, RouteSegment, Step, TransportMode, Trip } from "@/lib/types";
 import { ROUTABLE_MODES } from "@/lib/types";
 import type { PlaceCategory } from "@/lib/categories";
 import { estimateDurationMin, haversineMeters } from "@/lib/geo";
@@ -75,6 +75,11 @@ interface TripState {
   future: Trip[];
 
   setTrip: (trip: Trip) => void;
+  /** Swaps in a trip whose routes just came back from the deferred-OSRM
+   *  Save flow — unlike setTrip, doesn't reset activeDayIndex/activeStepId
+   *  or clear undo history, since this isn't a fresh load, just the same
+   *  edit session's routes finally getting their real geometry. */
+  applyResolvedTrip: (trip: Trip) => void;
   setTripTitle: (title: string) => void;
   setActiveDayIndex: (index: number) => void;
   setActiveStepId: (id: string | null) => void;
@@ -114,17 +119,6 @@ interface TripState {
 
   setSegmentMode: (dayId: string, segIndex: number, mode: TransportMode) => void;
   setTransitLine: (dayId: string, segIndex: number, line: string) => void;
-  setRouteFound: (
-    dayId: string,
-    segIndex: number,
-    info: {
-      distanceM: number;
-      durationMin: number;
-      geometry: LatLng[];
-      geometryResolved: boolean;
-      geometryDegraded?: boolean;
-    }
-  ) => void;
   insertManualWaypoint: (
     dayId: string,
     segIndex: number,
@@ -139,10 +133,6 @@ interface TripState {
   ) => void;
   removeManualWaypoint: (dayId: string, segIndex: number, waypointIndex: number) => void;
   resetRouteToAuto: (dayId: string, segIndex: number) => void;
-
-  /** Replaces the trip's hidden-gem list wholesale — used by the background
-   *  poll that pulls in gems the Game Master placed via the Admin panel. */
-  setHiddenGems: (gems: HiddenGem[]) => void;
 
   addUnplannedPlace: (place: {
     name: string;
@@ -189,6 +179,11 @@ export const useTripStore = create<TripState>()(
     setSaveState: (saveState) =>
       set((state) => {
         state.saveState = saveState;
+      }),
+
+    applyResolvedTrip: (trip) =>
+      set((state) => {
+        state.trip = trip;
       }),
 
     setTripTitle: (title) =>
@@ -440,19 +435,6 @@ export const useTripStore = create<TripState>()(
         route.transitLine = line.trim() || undefined;
       }),
 
-    setRouteFound: (dayId, segIndex, info) =>
-      set((state) => {
-        const { day } = findDay(state.trip, dayId);
-        const route = day?.routes[segIndex];
-        if (!day || !route) return;
-        route.distanceM = info.distanceM;
-        route.durationMin = info.durationMin;
-        route.geometry = info.geometry;
-        route.geometryResolved = info.geometryResolved;
-        route.geometryDegraded = info.geometryDegraded ?? false;
-        recalcDay(day);
-      }),
-
     insertManualWaypoint: (dayId, segIndex, insertAt, point) =>
       set((state) => {
         const { day } = findDay(state.trip, dayId);
@@ -494,14 +476,6 @@ export const useTripStore = create<TripState>()(
         fresh.resetNonce = route.resetNonce + 1;
         day.routes[segIndex] = fresh;
         recalcDay(day);
-      }),
-
-    // Not run through recordHistory/undo — this mirrors gems the Game Master
-    // placed via the Admin Hidden Gem Studio, not a local edit the player
-    // made, so it shouldn't be something the player's own Ctrl+Z can revert.
-    setHiddenGems: (gems) =>
-      set((state) => {
-        state.trip.hiddenGems = gems;
       }),
 
     addUnplannedPlace: (place) =>

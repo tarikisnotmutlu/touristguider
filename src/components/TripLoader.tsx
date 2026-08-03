@@ -2,90 +2,58 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTripStore } from "@/store/useTripStore";
-import { fetchTrip, saveTrip } from "@/lib/tripApi";
-import { createDemoTrip } from "@/lib/seed";
-import { rememberTrip, saveTripSnapshot, loadTripSnapshot } from "@/lib/localTrips";
+import { useJourneyStore } from "@/store/useJourneyStore";
+import { ensureSessionExists, subscribeToTrip } from "@/lib/tripSync";
 import AppShell from "./AppShell";
 
-const AUTOSAVE_DELAY_MS = 1200;
-
 /**
- * Hydrates the store from the server (Vercel Blob, keyed by `tripId`) and keeps it
- * saved back there on every change — the URL is the single source of truth, so
- * refreshing or sharing the link always shows the same, current itinerary.
+ * Hydrates the store from Firestore (real-time, offline-persisted) and keeps
+ * it live-synced from there — `sessionId` is the single source of truth, so
+ * anyone in the same session sees the same itinerary. While Edit Mode is on,
+ * incoming snapshots are ignored (see the deferred-save architecture in
+ * tripSync.ts) so a remote update can never clobber an in-progress local
+ * edit; they resume applying the instant Edit Mode ends.
  */
-export default function TripLoader({ tripId }: { tripId: string }) {
-  // Tracks which trip id the store is currently hydrated for, rather than a
-  // separate "loading" boolean — `ready` is derived from comparing the two.
-  const [readyForTripId, setReadyForTripId] = useState<string | null>(null);
+export default function TripLoader({ sessionId }: { sessionId: string }) {
+  const [ready, setReady] = useState(false);
   const setTrip = useTripStore((s) => s.setTrip);
-  const setSaveState = useTripStore((s) => s.setSaveState);
-  const trip = useTripStore((s) => s.trip);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     hydratedRef.current = false;
 
+    let unsubscribe: (() => void) | null = null;
+
     (async () => {
-      // fetchTrip can come back null either because the trip genuinely
-      // doesn't exist yet, or because the request itself failed (offline,
-      // Blob hiccup) — either way, prefer whatever's mirrored in
-      // localStorage over silently starting from a blank demo trip.
-      let existing = null;
       try {
-        existing = await fetchTrip(tripId);
+        await ensureSessionExists(sessionId);
       } catch {
-        existing = null;
+        // Offline on first-ever visit to this session id — subscribeToTrip
+        // below will still populate from cache/server once reachable.
       }
       if (cancelled) return;
-      if (existing) {
-        setTrip(existing);
-      } else {
-        const local = loadTripSnapshot(tripId);
-        if (local) {
-          setTrip(local);
-          // Best-effort push back to the server now that we're reading —
-          // if it fails again we're still safely on the local copy.
-          saveTrip(local);
-        } else {
-          const fresh = createDemoTrip();
-          fresh.id = tripId;
-          setTrip(fresh);
-          saveTripSnapshot(fresh);
-          await saveTrip(fresh);
+
+      unsubscribe = subscribeToTrip(sessionId, (trip) => {
+        // Edit Mode is authoritative over local state until the user hits
+        // Done — a live update from someone else (or an echo of your own
+        // save) must never overwrite in-progress, unsaved edits.
+        if (useJourneyStore.getState().isEditMode) return;
+        setTrip(trip);
+        if (!hydratedRef.current) {
+          hydratedRef.current = true;
+          setReady(true);
         }
-      }
-      if (cancelled) return;
-      hydratedRef.current = true;
-      setReadyForTripId(tripId);
+      });
     })();
 
     return () => {
       cancelled = true;
+      unsubscribe?.();
     };
-  }, [tripId, setTrip]);
+  }, [sessionId, setTrip]);
 
-  useEffect(() => {
-    if (!hydratedRef.current) return;
-    rememberTrip(trip.id, trip.title);
-    // Written synchronously on every change (add a stop, toggle done,
-    // reorder, edit an ETA...) rather than debounced like the network
-    // save — a reload half a second after an edit should never lose it.
-    saveTripSnapshot(trip);
-    setSaveState("saving");
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      const ok = await saveTrip(trip);
-      setSaveState(ok ? "saved" : "idle");
-    }, AUTOSAVE_DELAY_MS);
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [trip, setSaveState]);
-
-  if (readyForTripId !== tripId) {
+  if (!ready) {
     return (
       <div className="flex h-dvh w-full items-center justify-center bg-stone-50 text-stone-400">
         Loading itinerary…

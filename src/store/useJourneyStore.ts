@@ -59,17 +59,12 @@ interface JourneyState {
   isEditMode: boolean;
   toggleEditMode: () => void;
 
-  /** True for exactly one pending click: MapView's "Add Stop" button flips
-   *  this on, the very next map click drops the node and flips it back off.
-   *  Lets map clicks stay inert the rest of the time, even in Edit Mode. */
-  isAddingNode: boolean;
-  setAddingNode: (adding: boolean) => void;
-
   /** Set to a step's id while the visitor is repositioning that step's pin —
-   *  the "Adjust location" button on its Timeline card flips this on, the
-   *  very next map click moves the pin there and flips it back off. Same
-   *  one-shot pattern as isAddingNode, just targeting an existing step
-   *  instead of creating a new one. */
+   *  the "Adjust location" button on its Timeline card flips this on; the
+   *  very next map click moves the pin there and flips it back off. Adding a
+   *  brand new stop never goes through a map click (see AddCustomStopForm's
+   *  coordinate paste instead) — this is the only one-shot map-click flow
+   *  left. */
   movingStepId: string | null;
   setMovingStepId: (stepId: string | null) => void;
 
@@ -157,11 +152,7 @@ export const useJourneyStore = create<JourneyState>()(
   persist(
     (set, get) => ({
       isEditMode: false,
-      toggleEditMode: () =>
-        set((s) => ({ isEditMode: !s.isEditMode, isAddingNode: false, movingStepId: null })),
-
-      isAddingNode: false,
-      setAddingNode: (adding) => set({ isAddingNode: adding }),
+      toggleEditMode: () => set((s) => ({ isEditMode: !s.isEditMode, movingStepId: null })),
 
       movingStepId: null,
       setMovingStepId: (stepId) => set({ movingStepId: stepId }),

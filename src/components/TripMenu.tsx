@@ -1,39 +1,49 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { genId } from "@/lib/id";
-import { getMyTrips, forgetTrip, type LocalTripEntry } from "@/lib/localTrips";
 import { useTripStore } from "@/store/useTripStore";
+import { setSessionId, slugifySessionId } from "@/lib/session";
 
+/** Session-aware replacement for the old per-trip "My trips" menu — there's
+ *  no longer a URL to bookmark, just a session id shared verbally/by text
+ *  within the group, so this exposes it and lets the player switch to a
+ *  different one (a fresh page load re-runs the onboarding/session-resolve
+ *  flow against the new id). */
 export default function TripMenu() {
   const [open, setOpen] = useState(false);
-  const [trips, setTrips] = useState<LocalTripEntry[]>([]);
+  const [switching, setSwitching] = useState(false);
+  const [newSessionInput, setNewSessionInput] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const currentTripId = useTripStore((s) => s.trip.id);
+  const currentSessionId = useTripStore((s) => s.trip.id);
 
   useEffect(() => {
     if (!open) return;
     function onClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSwitching(false);
+      }
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
+  function handleSwitch(e: React.FormEvent) {
+    e.preventDefault();
+    const slug = slugifySessionId(newSessionInput);
+    if (!slug) return;
+    setSessionId(slug);
+    window.location.reload();
+  }
+
   return (
     <div className="relative" ref={rootRef}>
       <button
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          if (next) setTrips(getMyTrips());
-        }}
+        onClick={() => setOpen((v) => !v)}
         type="button"
         className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100"
-        title="My trips"
+        title="Session"
       >
         📂
       </button>
@@ -44,53 +54,43 @@ export default function TripMenu() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
-            className="glass-panel absolute right-0 z-30 mt-1.5 w-64 rounded-2xl p-2 shadow-xl"
+            className="glass-panel absolute right-0 z-30 mt-1.5 w-64 rounded-2xl p-3 shadow-xl"
           >
-            <button
-              onClick={() => {
-                setOpen(false);
-                router.push(`/t/${genId()}`);
-              }}
-              type="button"
-              className="mb-1 flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm text-stone-700 hover:bg-sage-50"
-            >
-              🆕 New trip
-            </button>
-            <div className="max-h-56 overflow-y-auto">
-              {trips.length === 0 && (
-                <p className="px-2 py-1.5 text-xs text-stone-400">No saved trips on this device yet.</p>
-              )}
-              {trips.map((t) => (
-                <div
-                  key={t.id}
-                  className="group flex items-center rounded-xl px-2 py-1.5 text-sm hover:bg-stone-100"
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Session id</p>
+            <p className="mt-1 truncate rounded-lg bg-stone-100 px-2.5 py-1.5 text-sm font-medium text-stone-700">
+              {currentSessionId}
+            </p>
+            <p className="mt-1.5 text-[11px] text-stone-400">
+              Share this id with your group — they enter it on the join screen.
+            </p>
+
+            <div className="mt-3 border-t border-stone-200/70 pt-2">
+              {switching ? (
+                <form onSubmit={handleSwitch} className="flex flex-col gap-1.5">
+                  <input
+                    autoFocus
+                    value={newSessionInput}
+                    onChange={(e) => setNewSessionInput(e.target.value)}
+                    placeholder="New session id"
+                    className="w-full rounded-full border border-stone-200 bg-white/80 px-3 py-1 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newSessionInput.trim()}
+                    className="rounded-full bg-stone-800 px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                  >
+                    Switch
+                  </button>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setSwitching(true)}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm text-stone-700 hover:bg-sage-50"
                 >
-                  <button
-                    onClick={() => {
-                      setOpen(false);
-                      router.push(`/t/${t.id}`);
-                    }}
-                    type="button"
-                    className={
-                      "min-w-0 flex-1 truncate text-left " +
-                      (t.id === currentTripId ? "font-semibold text-sage-700" : "text-stone-700")
-                    }
-                  >
-                    {t.title || "Untitled trip"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      forgetTrip(t.id);
-                      setTrips(getMyTrips());
-                    }}
-                    type="button"
-                    title="Remove from this list"
-                    className="ml-1 shrink-0 text-stone-300 opacity-0 hover:text-terracotta-600 group-hover:opacity-100"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                  🔀 Switch session
+                </button>
+              )}
             </div>
           </motion.div>
         )}

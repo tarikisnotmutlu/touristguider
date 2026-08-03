@@ -5,22 +5,26 @@ export interface PlayerStats {
   fatigueLevel: number;
 }
 
+/** Firestore document shape at sessions/{sessionId}/players/{playerName} —
+ *  playerName IS the document id, so it isn't duplicated in the body. */
 export interface PlayerTelemetry {
-  playerId: string;
-  /** Which trip this player is currently on — the admin dashboard is scoped
-   *  per-trip, so this is how it knows which players to show. */
-  tripId: string;
-  playerName: string;
   lat: number | null;
   lng: number | null;
   stats: PlayerStats;
   timestamp: number;
 }
 
+/** PlayerTelemetry plus the playerName the admin UI read it back under —
+ *  the document id isn't part of the document body, so callers that listed
+ *  a whole players collection need to carry it alongside separately. */
+export interface NamedPlayerTelemetry extends PlayerTelemetry {
+  playerName: string;
+}
+
 export type GmAction = "full_heal" | "send_water" | "gift_cat" | "cure_fatigue" | "reset_stats";
 
+/** Firestore document shape at .../players/{playerName}/overrides/{id}. */
 export interface GmOverride {
-  id: string;
   action: GmAction;
   createdAt: number;
 }
@@ -40,36 +44,3 @@ export const GM_ACTION_MESSAGE: Record<GmAction, string> = {
   cure_fatigue: "The Game Master cured your fatigue! 🌿",
   reset_stats: "The Game Master reset your stats! 🔄",
 };
-
-const PLAYER_ID_KEY = "touristguider:playerId";
-const PLAYER_NAME_KEY = "touristguider:playerName";
-
-/** A stable per-browser identity for telemetry — generated once and kept in
- *  localStorage, independent of any particular trip. */
-export function getOrCreatePlayerId(): string {
-  if (typeof window === "undefined") return "";
-  let id = window.localStorage.getItem(PLAYER_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.localStorage.setItem(PLAYER_ID_KEY, id);
-  }
-  return id;
-}
-
-export function getPlayerName(): string {
-  if (typeof window === "undefined") return "Traveler";
-  return window.localStorage.getItem(PLAYER_NAME_KEY) || "Traveler";
-}
-
-/** Distinguishes "never set" from "set to the Traveler fallback" —
- *  getPlayerName() alone can't tell those apart, but the onboarding gate
- *  needs to. */
-export function hasPlayerName(): boolean {
-  if (typeof window === "undefined") return false;
-  return !!window.localStorage.getItem(PLAYER_NAME_KEY)?.trim();
-}
-
-export function setPlayerName(name: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(PLAYER_NAME_KEY, name.trim() || "Traveler");
-}

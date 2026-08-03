@@ -32,7 +32,7 @@ export default function HiddenGemModal() {
     if (!gem) return;
     const gemId = gem.id;
     const note = gem.note;
-    const imageSrc = gem.imageBase64 ?? gem.imageUrl;
+    const imageSrc = gem.imageUrl;
     const geoLocked = gem.geoLocked;
     const radiusM = gem.radiusM ?? UNLOCK_RADIUS_M;
 

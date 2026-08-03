@@ -8,14 +8,7 @@ import { useJourneyStore } from "@/store/useJourneyStore";
 import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
 import { ROUTABLE_MODES, type LatLng, type TransportMode } from "@/lib/types";
 import { pointBefore } from "@/lib/dayHelpers";
-import { fetchRoute } from "@/lib/osrmHttp";
-import {
-  bearingDegrees,
-  boundsOf,
-  estimateDurationMin,
-  haversineMeters,
-  projectPointOntoPolyline,
-} from "@/lib/geo";
+import { bearingDegrees, boundsOf, projectPointOntoPolyline } from "@/lib/geo";
 import { dayColor } from "@/lib/dayColors";
 import {
   createStepMarkerEl,
@@ -28,16 +21,9 @@ import {
   createGemMarkerEl,
   createLiveLocationMarkerEl,
 } from "./MapMarkers";
-import AddStopPinForm from "./AddStopPinForm";
 
 // Istanbul, used only as a fallback center before any trip data has loaded.
 const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
-
-// After a single failed OSRM attempt, a segment shows a clearly-marked
-// straight-line estimate instead of leaving a gap the user has to just wait
-// out — better an obviously-fake line the user can drag into shape (see the
-// via-marker system) than looking like the app silently isn't working.
-const DEGRADE_AFTER_ATTEMPTS = 1;
 
 // MapLibre spins up its tile-parsing worker via `new Worker(new URL(...,
 // import.meta.url))` inside its own bundled module — Turbopack doesn't
@@ -122,7 +108,6 @@ export default function MapView() {
   const [ready, setReady] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [ghostPoint, setGhostPoint] = useState<LatLng | null>(null);
-  const [pendingStopPoint, setPendingStopPoint] = useState<LatLng | null>(null);
 
   // Mirrors of state read inside stable (bound-once) map event handlers,
   // which otherwise close over stale values.
@@ -130,9 +115,6 @@ export default function MapView() {
   const ghostPointRef = useRef(ghostPoint);
   const hitLayerIdsRef = useRef<string[]>([]);
 
-  const fetchKeyRef = useRef(new Map<string, string>());
-  const retryCountRef = useRef(new Map<string, number>());
-  const abortRef = useRef(new Map<string, AbortController>());
   const fitDayIdRef = useRef<string | null>(null);
   const routeSignaturesRef = useRef(new Map<string, string>());
 
@@ -153,8 +135,6 @@ export default function MapView() {
   const activeDayIndex = useTripStore((s) => s.activeDayIndex);
   const activeStepId = useTripStore((s) => s.activeStepId);
   const isEditMode = useJourneyStore((s) => s.isEditMode);
-  const isAddingNode = useJourneyStore((s) => s.isAddingNode);
-  const setAddingNode = useJourneyStore((s) => s.setAddingNode);
   const movingStepId = useJourneyStore((s) => s.movingStepId);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const panelView = useJourneyStore((s) => s.panelView);
@@ -271,26 +251,23 @@ export default function MapView() {
     const resizeObserver = new ResizeObserver(wakeUp);
     resizeObserver.observe(mapContainer.current);
 
-    // ---- one-shot "Add Stop" placement ----
+    // ---- one-shot "adjust pin location" placement ----
     // Reads straight off the store (always current) rather than a ref mirror
     // — no React state involved in the click path, so there's nothing to go
-    // stale. Every other map click is a strict no-op by construction: this
-    // is the ONLY place a plain map click can affect the itinerary at all.
+    // stale. Adding a stop is never done via a map click (see AddCustomStopForm's
+    // explicit coordinate paste instead) — this is the ONLY place a plain map
+    // click can affect the itinerary at all, and only while repositioning an
+    // existing step, never for creating one.
     map.on("click", (e: maplibregl.MapMouseEvent) => {
       const journey = useJourneyStore.getState();
-      if (journey.isEditMode && journey.movingStepId) {
-        const stepId = journey.movingStepId;
-        journey.setMovingStepId(null);
-        const tripState = useTripStore.getState();
-        const ownerDay = tripState.trip.days.find((d) => d.steps.some((s) => s.id === stepId));
-        if (ownerDay) {
-          tripState.moveStep(ownerDay.id, stepId, { lat: e.lngLat.lat, lng: e.lngLat.lng });
-        }
-        return;
+      if (!journey.isEditMode || !journey.movingStepId) return;
+      const stepId = journey.movingStepId;
+      journey.setMovingStepId(null);
+      const tripState = useTripStore.getState();
+      const ownerDay = tripState.trip.days.find((d) => d.steps.some((s) => s.id === stepId));
+      if (ownerDay) {
+        tripState.moveStep(ownerDay.id, stepId, { lat: e.lngLat.lat, lng: e.lngLat.lng });
       }
-      if (!journey.isEditMode || !journey.isAddingNode) return;
-      journey.setAddingNode(false);
-      setPendingStopPoint({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
 
     function queryHit(e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
@@ -363,96 +340,18 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = dragState ? "grabbing" : isAddingNode || movingStepId ? "crosshair" : "";
-  }, [dragState, isAddingNode, movingStepId]);
+    map.getCanvas().style.cursor = dragState ? "grabbing" : movingStepId ? "crosshair" : "";
+  }, [dragState, movingStepId]);
 
-  // ---- fetch/refresh route geometry for each segment as needed ----
-  useEffect(() => {
-    if (!day) return;
-    day.steps.forEach((step, i) => {
-      const route = day.routes[i];
-      const from = pointBefore(day, i);
-      const to: LatLng = { lat: step.lat, lng: step.lng };
-      const segId = `${day.id}:${i}`;
-
-      if (!ROUTABLE_MODES.includes(route.mode)) {
-        // Mode is part of this key too — transit and ferry both land here,
-        // and switching between them needs a fresh duration estimate even
-        // though from/to don't change (they have different average speeds).
-        const key = `${route.mode}:${from.lat},${from.lng}:${to.lat},${to.lng}`;
-        if (fetchKeyRef.current.get(segId) !== key) {
-          fetchKeyRef.current.set(segId, key);
-          const distanceM = haversineMeters(from, to);
-          useTripStore.getState().setRouteFound(day.id, i, {
-            distanceM,
-            durationMin: estimateDurationMin(distanceM, route.mode),
-            geometry: [from, to],
-            geometryResolved: true,
-            geometryDegraded: false,
-          });
-        }
-        return;
-      }
-
-      const key = JSON.stringify({
-        mode: route.mode,
-        from,
-        to,
-        via: route.manualWaypoints,
-        nonce: route.resetNonce,
-      });
-      if (fetchKeyRef.current.get(segId) === key) return;
-      fetchKeyRef.current.set(segId, key);
-      retryCountRef.current.set(segId, 0);
-
-      abortRef.current.get(segId)?.abort();
-      const controller = new AbortController();
-      abortRef.current.set(segId, controller);
-
-      const waypoints = [from, ...route.manualWaypoints, to];
-      // Retries on failure rather than ever accepting a straight line for a
-      // routable segment (walk/drive) as if it were a real OSRM route — but
-      // after DEGRADE_AFTER_ATTEMPTS failures (OSRM genuinely down/slow, not
-      // just one dropped request), it writes the straight-line distance as a
-      // clearly-marked "degraded" estimate instead of leaving the segment a
-      // permanent gap — see the route-sync effect's `degraded` styling.
-      // Retries keep going in the background regardless, so a real route
-      // silently replaces the estimate the moment OSRM comes back.
-      function attempt() {
-        fetchRoute(waypoints, route.mode, controller.signal)
-          .then((result) => {
-            if (controller.signal.aborted) return;
-            useTripStore.getState().setRouteFound(day.id, i, {
-              ...result,
-              geometryResolved: true,
-              geometryDegraded: false,
-            });
-          })
-          .catch(() => {
-            if (controller.signal.aborted) return;
-            const attempts = (retryCountRef.current.get(segId) ?? 0) + 1;
-            retryCountRef.current.set(segId, attempts);
-            if (attempts === DEGRADE_AFTER_ATTEMPTS) {
-              // Straight-line-segments through the user's own via points (if
-              // any) rather than a single from->to line — a drag they made
-              // to bend this route should show up immediately even while
-              // OSRM keeps failing, not wait for a fetch that may never land.
-              let distanceM = 0;
-              for (let w = 1; w < waypoints.length; w++) distanceM += haversineMeters(waypoints[w - 1], waypoints[w]);
-              useTripStore.getState().setRouteFound(day.id, i, {
-                distanceM,
-                durationMin: estimateDurationMin(distanceM, route.mode),
-                geometry: waypoints,
-                geometryResolved: false,
-                geometryDegraded: true,
-              });
-            }
-            window.setTimeout(attempt, 4000);
-          });
-      }
-      attempt();
-    });
-  }, [day]);
+  // Routes are never fetched live from MapView anymore — per the deferred-
+  // OSRM architecture (see tripSync.ts), a session's routes are resolved
+  // once up front (ensureSessionExists) and again only on Save (Edit Mode
+  // -> View Mode), never while the map is just rendering. This keeps every
+  // add/move/delete/reorder in Edit Mode a pure, instant, local Zustand
+  // mutation — the old per-segment retry-fetch loop here was exactly what
+  // caused nodes to appear to "delete themselves": a slow, in-flight fetch
+  // for an old segIndex could land after further edits had shifted the
+  // routes array around and stomp the wrong entry.
 
   // ---- sync route line sources/layers onto the map ----
   // (gated on isStyleLoaded()/'styledata' below, not on the React `ready`
@@ -473,31 +372,38 @@ export default function MapView() {
           const to: LatLng = { lat: step.lat, lng: step.lng };
           const srcId = lineSourceId(day.id, i);
           const routable = ROUTABLE_MODES.includes(route.mode);
-          const degraded = routable && !route.geometryResolved && !!route.geometryDegraded;
+          const isUnresolved = routable && !route.geometryResolved;
+          // While Edit Mode is on, routes are never fetched (see the removed
+          // fetch effect above) — every unresolved routable segment renders
+          // as an instant straight line through its endpoints/manual
+          // waypoints instead, kept deliberately simple/synchronous for
+          // 60fps dragging. Outside Edit Mode this should be rare (routes
+          // are fully resolved by ensureSessionExists/Save before a viewer
+          // ever sees them), but the old "gap, then degrade after retries
+          // give up" fallback stays as a safety net for that case.
+          const degraded = !isEditMode && isUnresolved && !!route.geometryDegraded;
+          const showPlaceholder = isEditMode && isUnresolved;
 
-          // A routable segment whose geometry hasn't been OSRM-resolved yet
-          // (just added/reordered, fetch still in flight) is left out of
-          // desiredIds entirely — the cleanup pass below then strips any
-          // stale line for it, so this segment briefly renders as a gap
-          // rather than a straight line cutting across the map. Once the
-          // fetch effect gives up retrying (see geometryDegraded), it's
-          // rendered anyway using the degraded style below rather than
-          // staying a gap forever.
-          if (routable && !route.geometryResolved && !degraded) return;
+          if (!isEditMode && isUnresolved && !degraded) return;
 
           desiredIds.add(srcId);
 
-          const coords = route.geometry.length >= 2 ? route.geometry : [from, to];
+          const coords = showPlaceholder
+            ? [from, ...route.manualWaypoints, to]
+            : route.geometry.length >= 2
+              ? route.geometry
+              : [from, to];
           // isCompleted rides on the feature itself (not a separate paint
           // call) so the line-opacity expression below re-evaluates it
           // automatically on every setData — no removeLayer/addLayer, and
           // no per-property update call, needed just to fade a finished leg.
           const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i, isCompleted: step.completed });
           const color = dayColor(index);
-          // Degraded-ness is part of the signature too — resolving for real
-          // (or giving up and degrading) needs the layer rebuilt with new
-          // paint, not just a setData on the existing one.
-          const signature = `${route.mode}:${degraded}`;
+          // Degraded/placeholder-ness is part of the signature too —
+          // resolving for real (or entering/leaving Edit Mode) needs the
+          // layer rebuilt with new paint, not just a setData on the existing one.
+          const faded = degraded || showPlaceholder;
+          const signature = `${route.mode}:${faded}`;
 
           const existingSource = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
           if (existingSource && routeSignaturesRef.current.get(srcId) === signature) {
@@ -520,16 +426,16 @@ export default function MapView() {
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
               "line-color": color,
-              "line-width": degraded ? 3 : 5,
+              "line-width": faded ? 3 : 5,
               // Data-driven so a done-toggle just needs setData (above) to
               // fade the segment — a finished leg recedes the same way a
-              // completed card/marker does elsewhere in the app. A degraded
-              // (OSRM-never-responded) line is faded further and thinner
-              // regardless of completion, so it never reads as a confident,
-              // real route — see the fetch effect's retry/give-up logic.
-              "line-opacity": degraded ? 0.4 : ["case", ["==", ["get", "isCompleted"], true], 0.3, 0.85],
+              // completed card/marker does elsewhere in the app. A faded
+              // (degraded, or an Edit Mode placeholder awaiting Save) line
+              // is thinner and more transparent regardless of completion,
+              // so it never reads as a confident, final route.
+              "line-opacity": faded ? 0.4 : ["case", ["==", ["get", "isCompleted"], true], 0.3, 0.85],
               ...LINE_DASH_BY_MODE[route.mode],
-              ...(degraded ? { "line-dasharray": [1, 1.5] } : {}),
+              ...(faded ? { "line-dasharray": [1, 1.5] } : {}),
             },
           });
           // Wide, invisible hit-test line so a drag started anywhere near the
@@ -562,7 +468,7 @@ export default function MapView() {
 
     if (map.isStyleLoaded()) applyRoutes();
     else map.once("styledata", applyRoutes);
-  }, [daysToRender]);
+  }, [daysToRender, isEditMode]);
 
   // ---- start markers (one per rendered day; overview shows all of them) ----
   // Markers don't need the style to be loaded — they're positioned via the
@@ -846,34 +752,10 @@ export default function MapView() {
         </div>
       )}
 
-      {/* Desktop-only, Edit-Mode-only "add a stop" control — the explicit,
-          deliberate alternative to letting a plain map click add a node
-          (see the click handler above, which only ever fires while
-          isAddingNode is true). Positioned top-right, below the zoom
-          control, since the 400px glass sidebar covers the top-left. */}
-      {isEditMode && day && (
-        <button
-          onClick={() => setAddingNode(!isAddingNode)}
-          type="button"
-          className={
-            "glass-panel absolute right-4 top-20 hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium shadow-lg lg:flex " +
-            (isAddingNode ? "ring-2 ring-sage-400 text-sage-700" : "text-stone-600 hover:text-stone-900")
-          }
-        >
-          📍 {isAddingNode ? "Click the map to place it…" : "Add Stop"}
-        </button>
-      )}
-
-      {pendingStopPoint && day && (
-        <AddStopPinForm
-          point={pendingStopPoint}
-          onCancel={() => setPendingStopPoint(null)}
-          onSave={(name, category) => {
-            useTripStore.getState().addStep(day.id, { ...pendingStopPoint, name, category });
-            setPendingStopPoint(null);
-          }}
-        />
-      )}
+      {/* Adding a stop is never a map click anymore — see Timeline's
+          "Add a stop" search box and coordinate-paste form instead. A plain
+          map click is now only ever a no-op, except for the one-shot
+          "adjust pin location" flow (see the click handler above). */}
     </div>
   );
 }

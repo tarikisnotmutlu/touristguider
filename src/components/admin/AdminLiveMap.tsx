@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CARTO_POSITRON_STYLE } from "@/lib/maplibreStyle";
-import type { PlayerTelemetry } from "@/lib/telemetry";
+import type { NamedPlayerTelemetry } from "@/lib/telemetry";
 
 // Same worker-URL fix as the main MapView — see that file for the full
 // explanation of why this is necessary under Turbopack.
@@ -18,7 +18,7 @@ const FALLBACK_CENTER: [number, number] = [28.9784, 41.0082];
  *  colored dot + label per player at their last-reported lat/lng. Kept
  *  intentionally separate from the trip-editing MapView (no routes,
  *  markers, drag-to-edit, etc.) since the admin view has none of that. */
-export default function AdminLiveMap({ players }: { players: PlayerTelemetry[] }) {
+export default function AdminLiveMap({ players }: { players: NamedPlayerTelemetry[] }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);

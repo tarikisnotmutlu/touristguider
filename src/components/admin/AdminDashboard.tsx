@@ -1,16 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { GM_ACTION_LABEL, type GmAction, type PlayerTelemetry } from "@/lib/telemetry";
+import { addDoc, onSnapshot } from "firebase/firestore";
+import {
+  GM_ACTION_LABEL,
+  type GmAction,
+  type GmOverride,
+  type NamedPlayerTelemetry,
+  type PlayerTelemetry,
+} from "@/lib/telemetry";
+import { playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
 
 const AdminLiveMap = dynamic(() => import("./AdminLiveMap"), { ssr: false });
 const HiddenGemStudio = dynamic(() => import("./HiddenGemStudio"), { ssr: false });
 const AdminRouteMap = dynamic(() => import("./AdminRouteMap"), { ssr: false });
 
 const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue"];
-const POLL_MS = 8000;
 const STALE_MS = 2 * 60 * 1000;
+
+type Player = NamedPlayerTelemetry;
+
+interface SessionOption {
+  id: string;
+  title: string;
+}
 
 function StatBar({ label, value, invert }: { label: string; value: number; invert?: boolean }) {
   const good = invert ? value < 40 : value > 60;
@@ -30,8 +44,8 @@ function StatBar({ label, value, invert }: { label: string; value: number; inver
 }
 
 function PlayerCard({ player, onAction, pending, now }: {
-  player: PlayerTelemetry;
-  onAction: (playerId: string, action: GmAction) => void;
+  player: Player;
+  onAction: (playerName: string, action: GmAction) => void;
   pending: boolean;
   now: number;
 }) {
@@ -64,7 +78,7 @@ function PlayerCard({ player, onAction, pending, now }: {
             key={action}
             type="button"
             disabled={pending}
-            onClick={() => onAction(player.playerId, action)}
+            onClick={() => onAction(player.playerName, action)}
             className="rounded-full bg-stone-800 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:opacity-40"
           >
             {GM_ACTION_LABEL[action]}
@@ -128,50 +142,79 @@ function PinGate({ onAuthed }: { onAuthed: () => void }) {
   );
 }
 
+function SessionSwitcher({ sessions, selectedSessionId, onSelect }: {
+  sessions: SessionOption[];
+  selectedSessionId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <select
+      value={selectedSessionId}
+      onChange={(e) => onSelect(e.target.value)}
+      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 focus:border-sage-400 focus:outline-none"
+    >
+      {sessions.length === 0 && <option value="">No sessions yet</option>}
+      {sessions.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.title} ({s.id})
+        </option>
+      ))}
+    </select>
+  );
+}
+
 type AdminTab = "gm" | "gems" | "routes";
 
-/** The Game Master dashboard for one specific trip — the trip id lives in
- *  the URL (/admin/[tripId]) rather than a bare /admin, so every tab (live
- *  player stats, Hidden Feature Studio, Route Map) opens already scoped to
- *  the right trip instead of requiring the id to be typed in by hand. */
-export default function AdminDashboard({ tripId }: { tripId: string }) {
+/** The Game Master dashboard — a Session Switcher dropdown (real-time, so a
+ *  brand-new session shows up the moment its first player joins) replaces
+ *  the old URL-encoded trip id; every tab (live player stats, Hidden
+ *  Feature Studio, Route Map) reads/writes whichever session is selected. */
+export default function AdminDashboard() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [tab, setTab] = useState<AdminTab>("gm");
-  const [players, setPlayers] = useState<PlayerTelemetry[]>([]);
-  const [pendingPlayerId, setPendingPlayerId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionOption[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [pendingPlayerName, setPendingPlayerName] = useState<string | null>(null);
   const [resettingAll, setResettingAll] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchPlayers = useCallback(async () => {
-    const res = await fetch(`/api/sync/players?tripId=${encodeURIComponent(tripId)}`, { cache: "no-store" });
-    if (res.status === 401) {
-      setAuthed(false);
-      return;
-    }
-    if (!res.ok) return;
-    setAuthed(true);
-    const data = (await res.json()) as PlayerTelemetry[];
-    setPlayers(data.sort((a, b) => b.timestamp - a.timestamp));
-  }, [tripId]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (cancelled) return;
-      await fetchPlayers();
+      try {
+        const res = await fetch("/api/admin/auth", { cache: "no-store" });
+        const data = (await res.json()) as { authed: boolean };
+        if (!cancelled) setAuthed(data.authed);
+      } catch {
+        if (!cancelled) setAuthed(false);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [fetchPlayers]);
+  }, []);
 
   useEffect(() => {
     if (!authed) return;
-    pollRef.current = setInterval(fetchPlayers, POLL_MS);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [authed, fetchPlayers]);
+    const unsub = onSnapshot(sessionsCollection(), (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, title: (d.data().title as string) ?? d.id }));
+      setSessions(list);
+      setSelectedSessionId((prev) => (prev && list.some((s) => s.id === prev) ? prev : list[0]?.id ?? ""));
+    });
+    return unsub;
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed || !selectedSessionId) {
+      const timer = setTimeout(() => setPlayers([]), 0);
+      return () => clearTimeout(timer);
+    }
+    const unsub = onSnapshot(playersCollection(selectedSessionId), (snap) => {
+      const list = snap.docs.map((d) => ({ playerName: d.id, ...(d.data() as PlayerTelemetry) }));
+      setPlayers(list.sort((a, b) => b.timestamp - a.timestamp));
+    });
+    return unsub;
+  }, [authed, selectedSessionId]);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -179,38 +222,31 @@ export default function AdminDashboard({ tripId }: { tripId: string }) {
     return () => clearInterval(timer);
   }, []);
 
-  async function handleAction(playerId: string, action: GmAction) {
-    setPendingPlayerId(playerId);
+  async function handleAction(playerName: string, action: GmAction) {
+    setPendingPlayerName(playerName);
     try {
-      await fetch(`/api/sync/overrides/${playerId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
+      const override: GmOverride = { action, createdAt: Date.now() };
+      await addDoc(playerOverridesCollection(selectedSessionId, playerName), override);
     } finally {
-      setPendingPlayerId(null);
+      setPendingPlayerName(null);
     }
   }
 
   /** Every traveler's hunger/thirst/fatigue/cat count lives only in their own
    *  phone's localStorage (never synced to the trip itself), so there's no
    *  single place to reset them from — this queues the same reset_stats
-   *  override onto every currently known player, reusing the exact delivery
-   *  path (~15s poll) each of the per-card actions already uses. */
+   *  override onto every currently known player. */
   async function handleResetAllStats() {
     const action: GmAction = "reset_stats";
     setResettingAll(true);
     try {
       await Promise.all(
-        players.map((p) =>
-          fetch(`/api/sync/overrides/${p.playerId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action }),
-          }).catch(() => {
+        players.map((p) => {
+          const override: GmOverride = { action, createdAt: Date.now() };
+          return addDoc(playerOverridesCollection(selectedSessionId, p.playerName), override).catch(() => {
             // Best-effort — a missed player just keeps their current stats.
-          })
-        )
+          });
+        })
       );
     } finally {
       setResettingAll(false);
@@ -224,12 +260,12 @@ export default function AdminDashboard({ tripId }: { tripId: string }) {
   }
 
   if (!authed) {
-    return <PinGate onAuthed={() => { setAuthed(true); fetchPlayers(); }} />;
+    return <PinGate onAuthed={() => setAuthed(true)} />;
   }
 
   return (
     <div className="flex h-dvh w-full flex-col bg-stone-50">
-      <div className="flex shrink-0 items-center gap-1 border-b border-stone-200 bg-white px-4 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-2">
         <TabButton active={tab === "gm"} onClick={() => setTab("gm")}>
           🎩 Game Master
         </TabButton>
@@ -239,10 +275,16 @@ export default function AdminDashboard({ tripId }: { tripId: string }) {
         <TabButton active={tab === "routes"} onClick={() => setTab("routes")}>
           🗺️ Route Map
         </TabButton>
-        <span className="ml-auto text-[11px] text-stone-400">Trip: {tripId}</span>
+        <div className="ml-auto">
+          <SessionSwitcher sessions={sessions} selectedSessionId={selectedSessionId} onSelect={setSelectedSessionId} />
+        </div>
       </div>
 
-      {tab === "gm" ? (
+      {!selectedSessionId ? (
+        <div className="flex flex-1 items-center justify-center text-sm text-stone-400">
+          No sessions yet — one appears here the moment a traveler joins.
+        </div>
+      ) : tab === "gm" ? (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           <div className="h-64 shrink-0 border-b border-stone-200 lg:h-auto lg:w-1/2 lg:border-b-0 lg:border-r">
             <AdminLiveMap players={players} />
@@ -269,10 +311,10 @@ export default function AdminDashboard({ tripId }: { tripId: string }) {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {players.map((p) => (
                   <PlayerCard
-                    key={p.playerId}
+                    key={p.playerName}
                     player={p}
                     onAction={handleAction}
-                    pending={pendingPlayerId === p.playerId}
+                    pending={pendingPlayerName === p.playerName}
                     now={now}
                   />
                 ))}
@@ -282,11 +324,11 @@ export default function AdminDashboard({ tripId }: { tripId: string }) {
         </div>
       ) : tab === "gems" ? (
         <div className="min-h-0 flex-1">
-          <HiddenGemStudio tripId={tripId} />
+          <HiddenGemStudio sessionId={selectedSessionId} />
         </div>
       ) : (
         <div className="min-h-0 flex-1">
-          <AdminRouteMap tripId={tripId} />
+          <AdminRouteMap sessionId={selectedSessionId} />
         </div>
       )}
     </div>

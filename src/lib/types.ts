@@ -92,14 +92,10 @@ export interface HiddenGem {
   /** Geo-lock trigger distance in meters. Falls back to a shared default
    *  (see GEM_UNLOCK_RADIUS_M) for gems saved before this field existed. */
   radiusM?: number;
-  /** Shown at the top of the discovery reveal when set, postcard-style.
-   *  Legacy field from before native upload — still rendered as a fallback
-   *  when a gem has no imageBase64. */
+  /** Shown at the top of the discovery reveal when set, postcard-style — a
+   *  Firebase Storage downloadURL from the Admin Hidden Gem Studio's native
+   *  file upload (gems/{sessionId}/{filename}). */
   imageUrl?: string;
-  /** A data: URL produced by the Admin Hidden Gem Studio's native file
-   *  upload (FileReader.readAsDataURL) — stored directly on the gem so no
-   *  cloud bucket is required. Preferred over imageUrl when both are set. */
-  imageBase64?: string;
 }
 
 /** A saved place with no day/time slot yet — lives in the "Unplanned" tab

@@ -6,14 +6,12 @@ import { useJourneyStore, FATIGUE_PER_METER, MEAL_BOOST } from "@/store/useJourn
 import { haversineMeters } from "@/lib/geo";
 import { vibrate } from "@/lib/haptics";
 import { useSyncTelemetry } from "@/hooks/useSyncTelemetry";
-import { fetchTrip } from "@/lib/tripApi";
 import type { LatLng } from "@/lib/types";
 
 const ARRIVAL_RADIUS_M = 20;
 const GEM_UNLOCK_RADIUS_M = 20;
 const TICK_MS = 2000;
 const DECAY_TICK_MS = 60000;
-const GEM_POLL_MS = 25000;
 const WALK_DISTANCE_THRESHOLD_M = 10;
 const WALK_DECAY_MULTIPLIER = 1.5;
 
@@ -29,6 +27,9 @@ const WALK_DECAY_MULTIPLIER = 1.5;
  *  5. Geofences the live position against geo-locked hidden gems.
  *  6. Via useSyncTelemetry: reports location/stats to the Game Master
  *     dashboard and applies any GM overrides it queues.
+ *
+ *  Hidden gems the Game Master places arrive live via TripLoader's Firestore
+ *  gems subscription (no polling needed) — this file only reacts to them.
  */
 export default function JourneyEngine() {
   const dayStarted = useJourneyStore((s) => s.dayStarted);
@@ -176,7 +177,7 @@ export default function JourneyEngine() {
         if (journey.discoveredGemIds.includes(gem.id)) continue;
         const distanceM = haversineMeters(journey.liveLocation, { lat: gem.lat, lng: gem.lng });
         if (distanceM <= (gem.radiusM ?? GEM_UNLOCK_RADIUS_M)) {
-          journey.triggerGemUnlock(gem.id, gem.note, gem.imageBase64 ?? gem.imageUrl);
+          journey.triggerGemUnlock(gem.id, gem.note, gem.imageUrl);
           vibrate([100, 50, 100, 50, 200]);
         }
       }
@@ -188,36 +189,6 @@ export default function JourneyEngine() {
     return () => {
       unsubTrip();
       unsubJourney();
-    };
-  }, []);
-
-  // --- 6. background poll for hidden gems the Game Master placed via the
-  //     Admin Hidden Gem Studio since this trip was loaded — only the gems
-  //     array is refetched/replaced, never the rest of the trip, so this
-  //     can't clobber the traveler's own in-progress edits. Skips the write
-  //     entirely when nothing actually changed, since MapView's marker sync
-  //     effect keys off `trip.hiddenGems` by reference and would otherwise
-  //     tear down and recreate every gem marker on every poll tick. ---
-  useEffect(() => {
-    let cancelled = false;
-    async function pollGems() {
-      const tripId = useTripStore.getState().trip.id;
-      if (!tripId) return;
-      try {
-        const fresh = await fetchTrip(tripId);
-        if (cancelled || !fresh) return;
-        const current = useTripStore.getState().trip.hiddenGems;
-        if (JSON.stringify(fresh.hiddenGems) !== JSON.stringify(current)) {
-          useTripStore.getState().setHiddenGems(fresh.hiddenGems);
-        }
-      } catch {
-        // Best-effort — just try again next tick.
-      }
-    }
-    const interval = setInterval(pollGems, GEM_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
     };
   }, []);
 

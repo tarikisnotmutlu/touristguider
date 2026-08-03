@@ -99,6 +99,19 @@ export function projectPointOntoPolyline(
   return { fraction: bestAlong / total, distanceM };
 }
 
+/** Parses a pasted "Lat, Lng" string (e.g. "41.014568, 28.974133") into a
+ *  LatLng — split on the comma, trim, parseFloat each half. Returns null for
+ *  anything that isn't exactly two valid numbers, so callers never have to
+ *  guess at partial/malformed input. */
+export function parseLatLngPaste(raw: string): LatLng | null {
+  const parts = raw.split(",").map((p) => p.trim());
+  if (parts.length !== 2) return null;
+  const lat = parseFloat(parts[0]);
+  const lng = parseFloat(parts[1]);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return { lat, lng };
+}
+
 export function boundsOf(points: LatLng[]): [[number, number], [number, number]] | null {
   if (points.length === 0) return null;
   let minLat = Infinity;
