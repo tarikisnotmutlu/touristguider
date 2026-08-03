@@ -59,6 +59,17 @@ const LINE_DASH_BY_MODE: Record<TransportMode, { "line-dasharray"?: number[] }> 
   ferry: { "line-dasharray": [1, 3] },
 };
 
+// Transit/ferry legs are a straight-line schematic ("this connection
+// exists"), never a real hugged-to-the-street path the way walk/drive are —
+// so unlike those two, they don't get the day's accent color. A fixed
+// neutral slate instead makes them unmistakable at a glance, even when one
+// happens to visually cross paths on screen with a same-day walking route
+// (e.g. a long transit hop cutting across the same neighborhood a nearby
+// walk connects within) — a dash-pattern difference alone can be too subtle
+// to notice at a quick glance/small zoom, and a schematic line sharing the
+// day's color reads as "this is the real path" when it isn't.
+const SCHEMATIC_LINE_COLOR = "#64748b";
+
 function toGeoJSONLine(
   coords: LatLng[],
   properties: Record<string, string | number | boolean>
@@ -408,7 +419,7 @@ export default function MapView() {
           // automatically on every setData — no removeLayer/addLayer, and
           // no per-property update call, needed just to fade a finished leg.
           const geojson = toGeoJSONLine(coords, { dayId: day.id, segIndex: i, isCompleted: step.completed });
-          const color = dayColor(index);
+          const color = routable ? dayColor(index) : SCHEMATIC_LINE_COLOR;
           // Degraded/placeholder-ness is part of the signature too —
           // resolving for real (or entering/leaving Edit Mode) needs the
           // layer rebuilt with new paint, not just a setData on the existing one.
