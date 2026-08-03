@@ -5,6 +5,7 @@ import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import { ensureSessionExists, subscribeToTrip } from "@/lib/tripSync";
 import AppShell from "./AppShell";
+import LoadingSpinner from "./LoadingSpinner";
 
 /**
  * Hydrates the store from Firestore (real-time, offline-persisted) and keeps
@@ -54,11 +55,7 @@ export default function TripLoader({ sessionId }: { sessionId: string }) {
   }, [sessionId, setTrip]);
 
   if (!ready) {
-    return (
-      <div className="flex h-dvh w-full items-center justify-center bg-stone-50 text-stone-400">
-        Loading itinerary…
-      </div>
-    );
+    return <LoadingSpinner label="Loading itinerary…" />;
   }
 
   return <AppShell />;

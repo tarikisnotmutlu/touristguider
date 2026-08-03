@@ -5,16 +5,33 @@ import {
   gemDocRef,
   gemsCollection,
   itineraryCollection,
+  playerDocRef,
   sessionDocRef,
 } from "./firestorePaths";
 import type { Day, HiddenGem, RouteSegment, Trip, UnplannedPlace } from "./types";
 import { ROUTABLE_MODES } from "./types";
+import type { PlayerTelemetry } from "./telemetry";
 import { normalizeTrip } from "./normalize";
 import { fetchRoute } from "./orsHttp";
 import { estimateDurationMin, haversineMeters } from "./geo";
 import { recomputeDayTimes } from "./time";
 import { pointBefore } from "./dayHelpers";
 import { createDemoTrip } from "./seed";
+
+/** A player doc older than this is treated as abandoned (closed the tab,
+ *  lost connection, went home) rather than "still in the session" — so a
+ *  stale nickname never permanently blocks itself from being reused. */
+const NICKNAME_STALE_MS = 5 * 60 * 1000;
+
+/** Checked before letting someone through the onboarding gate — two
+ *  travelers both posting telemetry under the same playerName would
+ *  overwrite each other's sessions/{sessionId}/players/{playerName} doc. */
+export async function isNicknameTaken(sessionId: string, playerName: string): Promise<boolean> {
+  const snap = await getDoc(playerDocRef(sessionId, playerName));
+  if (!snap.exists()) return false;
+  const data = snap.data() as PlayerTelemetry;
+  return Date.now() - data.timestamp < NICKNAME_STALE_MS;
+}
 
 interface SessionMetaDoc {
   title: string;
