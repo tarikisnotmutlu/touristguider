@@ -1,5 +1,6 @@
 const SESSION_ID_KEY = "touristguider:sessionId";
 const PLAYER_NAME_KEY = "touristguider:playerName";
+const SESSION_PASSWORD_KEY = "touristguider:sessionPassword";
 
 /** A Firestore document id — mirrors the sessionId charset used for the
  *  `sessions/{sessionId}` path everywhere else in the app. */
@@ -45,16 +46,33 @@ export function hasPlayerName(): boolean {
   return !!getPlayerName();
 }
 
-/** Both identity pieces present — the onboarding gate's unlock condition. */
+/** The session password entered at the lobby — kept alongside the other two
+ *  identity pieces purely as a record of what was used to get in; nothing
+ *  re-checks it against Firestore after the initial lobby login (see
+ *  lib/tripSync.ts's verifySessionCredentials, which is the only place a
+ *  password is ever validated). */
+export function getSessionPassword(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(SESSION_PASSWORD_KEY);
+}
+
+export function setSessionPassword(password: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SESSION_PASSWORD_KEY, password);
+}
+
+/** Both identity pieces present — the lobby form's "skip straight to my
+ *  session" condition, and what the /[sessionId] route guard checks. */
 export function hasSessionIdentity(): boolean {
   return hasPlayerName() && hasSessionId();
 }
 
-/** Forgets both identity pieces so the onboarding gate reappears on next
+/** Forgets all locally-stored identity so the lobby form reappears on next
  *  render — lets someone leave their current nickname/session and rejoin
  *  under a different one without clearing browser storage by hand. */
 export function clearSessionIdentity() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(SESSION_ID_KEY);
   window.localStorage.removeItem(PLAYER_NAME_KEY);
+  window.localStorage.removeItem(SESSION_PASSWORD_KEY);
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
-import { ensureSessionExists, subscribeToTrip } from "@/lib/tripSync";
+import { subscribeToTrip } from "@/lib/tripSync";
 import AppShell from "./AppShell";
 import LoadingSpinner from "./LoadingSpinner";
 
@@ -14,6 +14,12 @@ import LoadingSpinner from "./LoadingSpinner";
  * incoming snapshots are ignored (see the deferred-save architecture in
  * tripSync.ts) so a remote update can never clobber an in-progress local
  * edit; they resume applying the instant Edit Mode ends.
+ *
+ * Deliberately never creates the session — by the time this mounts, the
+ * /[sessionId] route guard has already confirmed the browser came through
+ * the password-gated lobby login, which itself already confirmed the
+ * session exists (see lib/tripSync.ts's verifySessionCredentials). Session
+ * creation is 100% isolated to the Admin panel.
  */
 export default function TripLoader({ sessionId }: { sessionId: string }) {
   const [ready, setReady] = useState(false);
@@ -21,37 +27,21 @@ export default function TripLoader({ sessionId }: { sessionId: string }) {
   const hydratedRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
     hydratedRef.current = false;
 
-    let unsubscribe: (() => void) | null = null;
-
-    (async () => {
-      try {
-        await ensureSessionExists(sessionId);
-      } catch {
-        // Offline on first-ever visit to this session id — subscribeToTrip
-        // below will still populate from cache/server once reachable.
+    const unsubscribe = subscribeToTrip(sessionId, (trip) => {
+      // Edit Mode is authoritative over local state until the user hits
+      // Done — a live update from someone else (or an echo of your own
+      // save) must never overwrite in-progress, unsaved edits.
+      if (useJourneyStore.getState().isEditMode) return;
+      setTrip(trip);
+      if (!hydratedRef.current) {
+        hydratedRef.current = true;
+        setReady(true);
       }
-      if (cancelled) return;
+    });
 
-      unsubscribe = subscribeToTrip(sessionId, (trip) => {
-        // Edit Mode is authoritative over local state until the user hits
-        // Done — a live update from someone else (or an echo of your own
-        // save) must never overwrite in-progress, unsaved edits.
-        if (useJourneyStore.getState().isEditMode) return;
-        setTrip(trip);
-        if (!hydratedRef.current) {
-          hydratedRef.current = true;
-          setReady(true);
-        }
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
+    return unsubscribe;
   }, [sessionId, setTrip]);
 
   if (!ready) {

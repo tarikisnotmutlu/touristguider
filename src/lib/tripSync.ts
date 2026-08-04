@@ -1,4 +1,13 @@
-import { deleteDoc, getDoc, getDocs, onSnapshot, runTransaction, setDoc, writeBatch } from "firebase/firestore";
+import {
+  deleteDoc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from "firebase/firestore";
 import { getDb } from "./firebase";
 import {
   dayDocRef,
@@ -40,6 +49,11 @@ interface SessionMetaDoc {
   title: string;
   dayOrder: string[];
   unplanned: UnplannedPlace[];
+  /** Gate checked by verifySessionCredentials at lobby login. Never read
+   *  into the client-side Trip model — only touched by the two functions
+   *  below. */
+  password?: string;
+  createdAt?: unknown;
 }
 
 type DayDoc = Omit<Day, "id">;
@@ -65,41 +79,10 @@ export function gemToDoc(gem: HiddenGem): GemDoc {
   return rest as GemDoc;
 }
 
-/** First time this session id has ever been used — seeds it with a fresh
- *  demo trip, fully ORS-resolved up front (this is a one-time creation, not
- *  an edit-mode session, so there's no "defer until Save" to apply here —
- *  otherwise a brand new session would show no routes at all until someone
- *  entered and left Edit Mode once).
- *
- *  The "does it exist" check and the (slow — a real ORS fetch per stop)
- *  route resolution used to be two separate steps, which raced: two
- *  concurrent callers (two friends opening the same brand-new session link
- *  at once, or a dev-mode double-effect-invoke) could both see "doesn't
- *  exist yet" and each write their own copy of the demo trip, doubling up
- *  every day. Claiming the session via a transaction FIRST — instantly,
- *  before any slow work — means a second concurrent caller's transaction
- *  sees it already claimed and backs off immediately instead of also
- *  resolving and writing its own copy. */
-export async function ensureSessionExists(sessionId: string): Promise<void> {
-  const claimed = await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(sessionDocRef(sessionId));
-    if (snap.exists()) return false;
-    tx.set(sessionDocRef(sessionId), { title: "Untitled Trip", dayOrder: [], unplanned: [] });
-    return true;
-  });
-  if (!claimed) return;
-
-  const demo = createDemoTrip();
-  const resolvedDays = await Promise.all(demo.days.map((day) => resolveDayRoutes(day, undefined)));
-  const batch = writeBatch(getDb());
-  batch.set(sessionDocRef(sessionId), {
-    title: demo.title,
-    dayOrder: resolvedDays.map((d) => d.id),
-    unplanned: demo.unplanned,
-  });
-  resolvedDays.forEach((day) => batch.set(dayDocRef(sessionId, day.id), dayToDoc(day)));
-  await batch.commit();
-}
+/** Thrown by createSession when the id is already taken — a concurrent
+ *  double-create backstop behind the caller's own sessionExists precheck
+ *  (see AdminDashboard's NewSessionForm), not the primary UX path. */
+export class SessionAlreadyExistsError extends Error {}
 
 // ---- admin: session & player management ----
 
@@ -108,12 +91,67 @@ export async function sessionExists(sessionId: string): Promise<boolean> {
   return snap.exists();
 }
 
-/** Explicit Admin "New Session" action — unlike ensureSessionExists
- *  (which is fine reusing an existing session so a returning player's link
- *  keeps working), this is a deliberate create and the caller is expected
- *  to have already confirmed the id is free via sessionExists first. */
-export async function createSession(sessionId: string): Promise<void> {
-  await ensureSessionExists(sessionId);
+/** Explicit Admin-only "New Session" action — session creation is 100%
+ *  isolated to this function. The player lobby (see verifySessionCredentials
+ *  below) only ever reads sessions/{sessionId}; it has no path that writes
+ *  one into existence, so a mistyped or unknown session id in the URL bar
+ *  or the join form can never silently vivify a fresh session anymore.
+ *
+ *  Seeds a fresh demo trip, fully ORS-resolved up front (this is a
+ *  one-time creation, not an edit-mode session, so there's no "defer until
+ *  Save" to apply here — otherwise a brand new session would show no
+ *  routes at all until someone entered and left Edit Mode once).
+ *
+ *  The uniqueness check and the (slow — a real ORS fetch per stop) route
+ *  resolution are two separate steps, which could race if two admins tried
+ *  to create the same id at once. Claiming the session via a transaction
+ *  FIRST — instantly, before any slow work — means a second concurrent
+ *  caller's transaction sees it already claimed and throws immediately
+ *  instead of also resolving and writing its own copy. */
+export async function createSession(sessionId: string, password: string): Promise<void> {
+  const claimed = await runTransaction(getDb(), async (tx) => {
+    const snap = await tx.get(sessionDocRef(sessionId));
+    if (snap.exists()) return false;
+    tx.set(sessionDocRef(sessionId), {
+      title: "Untitled Trip",
+      dayOrder: [],
+      unplanned: [],
+      password,
+      createdAt: serverTimestamp(),
+    });
+    return true;
+  });
+  if (!claimed) throw new SessionAlreadyExistsError(`Session "${sessionId}" already exists`);
+
+  const demo = createDemoTrip();
+  const resolvedDays = await Promise.all(demo.days.map((day) => resolveDayRoutes(day, undefined)));
+  const batch = writeBatch(getDb());
+  batch.set(sessionDocRef(sessionId), {
+    title: demo.title,
+    dayOrder: resolvedDays.map((d) => d.id),
+    unplanned: demo.unplanned,
+    password,
+    createdAt: serverTimestamp(),
+  });
+  resolvedDays.forEach((day) => batch.set(dayDocRef(sessionId, day.id), dayToDoc(day)));
+  await batch.commit();
+}
+
+export type SessionLoginResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "wrong_password" };
+
+/** The player lobby's ONLY Firestore call for validating a join attempt —
+ *  a plain read, never a write. Session creation lives exclusively in
+ *  createSession above; this function must never be given a mutation
+ *  fallback, no matter how tempting "just create it if missing" seems. */
+export async function verifySessionCredentials(sessionId: string, password: string): Promise<SessionLoginResult> {
+  const snap = await getDoc(sessionDocRef(sessionId));
+  if (!snap.exists()) return { ok: false, reason: "not_found" };
+  const data = snap.data() as SessionMetaDoc;
+  if ((data.password ?? "") !== password) return { ok: false, reason: "wrong_password" };
+  return { ok: true };
 }
 
 /** Deletes a session and everything under it: itinerary days, gems, and

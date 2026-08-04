@@ -1,10 +1,11 @@
 "use client";
 
-import OnboardingGate from "@/components/OnboardingGate";
+import LobbyForm from "@/components/LobbyForm";
 
-/** The single entry point — no more per-trip URLs. OnboardingGate blocks
- *  everything (map, Firestore reads, telemetry) behind a nickname + session
- *  id prompt, then mounts TripLoader itself once both are set. */
+/** The Landing Page — purely the password-gated Lobby/Onboarding form.
+ *  Nothing else ever renders here: a successful join navigates to the
+ *  dynamic /[sessionId] route, which owns the actual map/game board and its
+ *  own independent route guard (see app/[sessionId]/page.tsx). */
 export default function Home() {
-  return <OnboardingGate />;
+  return <LobbyForm />;
 }

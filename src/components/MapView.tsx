@@ -369,7 +369,7 @@ export default function MapView() {
 
   // Routes are never fetched live from MapView anymore — per the deferred-
   // OSRM architecture (see tripSync.ts), a session's routes are resolved
-  // once up front (ensureSessionExists) and again only on Save (Edit Mode
+  // once up front (createSession) and again only on Save (Edit Mode
   // -> View Mode), never while the map is just rendering. This keeps every
   // add/move/delete/reorder in Edit Mode a pure, instant, local Zustand
   // mutation — the old per-segment retry-fetch loop here was exactly what
@@ -412,7 +412,7 @@ export default function MapView() {
           // would increasingly miss the stale hitbox the more the real
           // curve deviates from a straight line. Outside Edit Mode this
           // placeholder never applies (routes are fully resolved by
-          // ensureSessionExists/Save before a viewer ever sees them), but
+          // createSession/Save before a viewer ever sees them), but
           // the old "gap, then degrade after retries give up" fallback
           // stays as a safety net for that case.
           const degraded = !isEditMode && isUnresolved && !!route.geometryDegraded;

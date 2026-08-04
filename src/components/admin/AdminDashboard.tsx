@@ -12,8 +12,16 @@ import {
   type PlayerTelemetry,
 } from "@/lib/telemetry";
 import { playerDocRef, playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
-import { createSession, deletePlayer, deleteSession, sessionExists, subscribeToTrip } from "@/lib/tripSync";
+import {
+  createSession,
+  deletePlayer,
+  deleteSession,
+  SessionAlreadyExistsError,
+  sessionExists,
+  subscribeToTrip,
+} from "@/lib/tripSync";
 import { playerColor } from "@/lib/playerColor";
+import { slugifySessionId } from "@/lib/session";
 import type { Trip } from "@/lib/types";
 import type { FocusRequest } from "./AdminMapPane";
 
@@ -209,26 +217,31 @@ function PinGate({ onAuthed }: { onAuthed: () => void }) {
 function NewSessionForm({ existingIds, onCreated }: { existingIds: string[]; onCreated: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [id, setId] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = id.trim().toLowerCase().replace(/\s+/g, "-");
-    if (!trimmed) return;
+    const trimmed = slugifySessionId(id);
+    const trimmedPassword = password.trim();
+    if (!trimmed || !trimmedPassword) return;
     setCreating(true);
     setError(null);
     try {
       if (existingIds.includes(trimmed) || (await sessionExists(trimmed))) {
-        setError("That session id is already taken.");
+        setError("This Session ID is already in use.");
         return;
       }
-      await createSession(trimmed);
+      await createSession(trimmed, trimmedPassword);
       setId("");
+      setPassword("");
       setOpen(false);
       onCreated(trimmed);
-    } catch {
-      setError("Couldn't create session — try again.");
+    } catch (err) {
+      setError(
+        err instanceof SessionAlreadyExistsError ? "This Session ID is already in use." : "Couldn't create session — try again."
+      );
     } finally {
       setCreating(false);
     }
@@ -253,11 +266,17 @@ function NewSessionForm({ existingIds, onCreated }: { existingIds: string[]; onC
         value={id}
         onChange={(e) => setId(e.target.value)}
         placeholder="session-id"
-        className="w-36 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+        className="w-32 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
+      />
+      <input
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="password"
+        className="w-28 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-900 placeholder-stone-400 focus:border-sage-400 focus:outline-none"
       />
       <button
         type="submit"
-        disabled={creating || !id.trim()}
+        disabled={creating || !id.trim() || !password.trim()}
         className="rounded-full bg-sage-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sage-700 disabled:opacity-40"
       >
         {creating ? "…" : "Create"}
@@ -268,6 +287,7 @@ function NewSessionForm({ existingIds, onCreated }: { existingIds: string[]; onC
           setOpen(false);
           setError(null);
           setId("");
+          setPassword("");
         }}
         className="rounded-full px-2.5 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-100"
       >
