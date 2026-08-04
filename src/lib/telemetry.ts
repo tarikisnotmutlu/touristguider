@@ -12,6 +12,10 @@ export interface PlayerTelemetry {
   lng: number | null;
   stats: PlayerStats;
   timestamp: number;
+  /** Deterministic per-player hex color (see lib/playerColor.ts) — persisted
+   *  so the admin UI can read it straight off the doc without recomputing,
+   *  though it's safe to recompute client-side for any doc missing it. */
+  color?: string;
 }
 
 /** PlayerTelemetry plus the playerName the admin UI read it back under —

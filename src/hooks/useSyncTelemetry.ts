@@ -6,6 +6,7 @@ import { useJourneyStore } from "@/store/useJourneyStore";
 import { useTripStore } from "@/store/useTripStore";
 import { getPlayerName } from "@/lib/session";
 import { playerDocRef, playerOverridesCollection, playerOverrideDocRef } from "@/lib/firestorePaths";
+import { playerColor } from "@/lib/playerColor";
 import type { GmOverride } from "@/lib/telemetry";
 
 const TELEMETRY_POST_MS = 20000;
@@ -42,6 +43,7 @@ export function useSyncTelemetry() {
             fatigueLevel: journey.fatigue,
           },
           timestamp: Date.now(),
+          color: playerColor(playerName),
         });
       } catch {
         // Best-effort — a missed beat just means a stale dot on the GM's map.

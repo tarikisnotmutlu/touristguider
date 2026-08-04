@@ -12,7 +12,9 @@ import {
 } from "@/lib/telemetry";
 import { playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
 import { createSession, deletePlayer, deleteSession, sessionExists, subscribeToTrip } from "@/lib/tripSync";
+import { playerColor } from "@/lib/playerColor";
 import type { Trip } from "@/lib/types";
+import type { FocusRequest } from "./AdminMapPane";
 
 const AdminMapPane = dynamic(() => import("./AdminMapPane"), { ssr: false });
 
@@ -50,6 +52,7 @@ function PlayerCard({
   onAction,
   onMessage,
   onDelete,
+  onFocus,
   pending,
   now,
 }: {
@@ -57,29 +60,54 @@ function PlayerCard({
   onAction: (playerName: string, action: GmAction) => void;
   onMessage: (playerName: string) => void;
   onDelete: (playerName: string) => void;
+  onFocus: (player: Player) => void;
   pending: boolean;
   now: number;
 }) {
   const stale = now - player.timestamp > STALE_MS;
+  const color = player.color ?? playerColor(player.playerName);
+  const located = player.lat != null && player.lng != null;
+
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <div
+      role="button"
+      tabIndex={located ? 0 : -1}
+      onClick={() => located && onFocus(player)}
+      onKeyDown={(e) => located && (e.key === "Enter" || e.key === " ") && onFocus(player)}
+      title={located ? "Click to fly the map to this player" : "No live location yet"}
+      style={{ borderLeftColor: color, borderLeftWidth: 4 }}
+      className={`flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition-shadow ${
+        located ? "cursor-pointer hover:shadow-md" : ""
+      }`}
+    >
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-bold tracking-tight text-stone-800">{player.playerName}</p>
-          <p className="text-[11px] text-stone-400">
-            {stale ? "Last seen " : "Live · "}
-            {new Date(player.timestamp).toLocaleTimeString()}
-          </p>
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+            style={{ backgroundColor: color }}
+          >
+            {player.playerName.slice(0, 1).toUpperCase()}
+          </span>
+          <div>
+            <p className="text-sm font-bold tracking-tight text-stone-800">{player.playerName}</p>
+            <p className="text-[11px] text-stone-400">
+              {stale ? "Last seen " : "Live · "}
+              {new Date(player.timestamp).toLocaleTimeString()}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${stale ? "bg-stone-300" : "bg-sage-500"}`} />
           <button
             type="button"
-            title="Remove this player from the dashboard"
-            onClick={() => onDelete(player.playerName)}
-            className="text-stone-300 hover:text-terracotta-600"
+            title="Kick / remove this player"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(player.playerName);
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-terracotta-50 text-sm text-terracotta-600 transition-colors hover:bg-terracotta-600 hover:text-white"
           >
-            ✕
+            🗑️
           </button>
         </div>
       </div>
@@ -99,7 +127,10 @@ function PlayerCard({
             key={action}
             type="button"
             disabled={pending}
-            onClick={() => onAction(player.playerName, action)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(player.playerName, action);
+            }}
             className="rounded-full bg-stone-800 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:opacity-40"
           >
             {GM_ACTION_LABEL[action]}
@@ -108,7 +139,10 @@ function PlayerCard({
         <button
           type="button"
           disabled={pending}
-          onClick={() => onMessage(player.playerName)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMessage(player.playerName);
+          }}
           className="col-span-2 rounded-full bg-sage-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-sage-700 disabled:opacity-40"
         >
           💬 Send Message
@@ -305,6 +339,12 @@ export default function AdminDashboard() {
   const [dayIndex, setDayIndex] = useState(0);
   const [showRoutes, setShowRoutes] = useState(true);
   const [dropGemMode, setDropGemMode] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
+
+  function focusPlayer(player: Player) {
+    if (player.lat == null || player.lng == null) return;
+    setFocusRequest({ lat: player.lat, lng: player.lng, nonce: Date.now() });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -531,7 +571,7 @@ export default function AdminDashboard() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <div className="h-72 shrink-0 border-b border-stone-200 lg:h-auto lg:w-1/2 lg:border-b-0 lg:border-r">
+          <div className="h-72 shrink-0 border-b border-stone-200 lg:h-auto lg:flex-1 lg:border-b-0 lg:border-r">
             <AdminMapPane
               sessionId={selectedSessionId}
               trip={trip}
@@ -540,13 +580,14 @@ export default function AdminDashboard() {
               dropGemMode={dropGemMode}
               onExitDropGemMode={() => setDropGemMode(false)}
               players={players}
+              focusRequest={focusRequest}
             />
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="min-h-0 overflow-y-auto p-4 lg:w-96 lg:max-w-md lg:shrink-0">
             {players.length === 0 ? (
               <p className="text-sm text-stone-400">No travelers checked in yet.</p>
             ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="flex flex-col gap-3">
                 {players.map((p) => (
                   <PlayerCard
                     key={p.playerName}
@@ -554,6 +595,7 @@ export default function AdminDashboard() {
                     onAction={handleAction}
                     onMessage={setMessageTarget}
                     onDelete={handleDeletePlayer}
+                    onFocus={focusPlayer}
                     pending={pendingPlayerName === p.playerName}
                     now={now}
                   />

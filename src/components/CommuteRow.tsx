@@ -34,7 +34,7 @@ export default function CommuteRow({ dayId, segIndex }: { dayId: string; segInde
     if (!day || !route) return;
     const from = pointBefore(day, segIndex);
     const to = day.steps[segIndex];
-    window.open(directionsUrl(from, to, route.mode), "_blank", "noopener,noreferrer");
+    window.open(directionsUrl(from, to, route.mode, route.manualWaypoints), "_blank", "noopener,noreferrer");
   }
 
   return (

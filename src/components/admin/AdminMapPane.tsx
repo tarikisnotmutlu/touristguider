@@ -10,6 +10,7 @@ import { uploadGemPhoto } from "@/lib/gemPhoto";
 import { genId } from "@/lib/id";
 import { dayColor } from "@/lib/dayColors";
 import { pointBefore } from "@/lib/dayHelpers";
+import { playerColor } from "@/lib/playerColor";
 import type { HiddenGem, LatLng, Trip } from "@/lib/types";
 import type { NamedPlayerTelemetry } from "@/lib/telemetry";
 import { createStepMarkerEl, createStartMarkerEl, createGemMarkerEl } from "../MapMarkers";
@@ -39,6 +40,16 @@ interface PendingGem {
   point: LatLng;
 }
 
+/** A request to pan the camera to a specific point — `nonce` exists so
+ *  clicking the same player twice in a row (same lat/lng) still re-triggers
+ *  the flyTo effect, since React skips effects whose dependencies are
+ *  reference-equal to last render. */
+export interface FocusRequest {
+  lat: number;
+  lng: number;
+  nonce: number;
+}
+
 /**
  * One shared map for everything the Game Master used to need three separate
  * tabs for: the selected day's route/stops, every Hidden Gem (with
@@ -54,6 +65,7 @@ export default function AdminMapPane({
   dropGemMode,
   onExitDropGemMode,
   players,
+  focusRequest,
 }: {
   sessionId: string;
   trip: Trip;
@@ -62,6 +74,7 @@ export default function AdminMapPane({
   dropGemMode: boolean;
   onExitDropGemMode: () => void;
   players: NamedPlayerTelemetry[];
+  focusRequest: FocusRequest | null;
 }) {
   const [pending, setPending] = useState<PendingGem | null>(null);
   const [selectedGemId, setSelectedGemId] = useState<string | null>(null);
@@ -229,7 +242,8 @@ export default function AdminMapPane({
     });
   }, [trip.hiddenGems]);
 
-  // ---- live player markers ----
+  // ---- live player markers, colorized per-player so the admin can tell
+  // travelers apart at a glance ----
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -238,17 +252,27 @@ export default function AdminMapPane({
     players
       .filter((p) => p.lat != null && p.lng != null)
       .forEach((p) => {
+        const color = p.color ?? playerColor(p.playerName);
         const el = document.createElement("div");
         el.className = "flex flex-col items-center gap-1";
         el.innerHTML = `
-          <div style="width:16px;height:16px;border-radius:9999px;background:#2563eb;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
-          <div style="font-size:11px;font-weight:600;color:#292524;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap">${p.playerName}</div>
+          <div style="width:16px;height:16px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
+          <div style="font-size:11px;font-weight:600;color:#292524;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap;border:1.5px solid ${color}">${p.playerName}</div>
         `;
         playerMarkersRef.current[p.playerName] = new maplibregl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([p.lng as number, p.lat as number])
           .addTo(map);
       });
   }, [players]);
+
+  // ---- click-to-focus: fly the camera to a player's live location when
+  // their card is clicked in the sidebar ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusRequest) return;
+    map.flyTo({ center: [focusRequest.lng, focusRequest.lat], zoom: 16, essential: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fires on nonce alone; lat/lng are part of the same object.
+  }, [focusRequest?.nonce]);
 
   async function handleCreateGem(gem: Omit<HiddenGem, "id" | "createdAt" | "imageUrl">, photoFile: File | null) {
     const id = genId();
