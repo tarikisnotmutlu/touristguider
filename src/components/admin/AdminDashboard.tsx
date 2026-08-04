@@ -76,6 +76,7 @@ function PlayerCard({
   const stale = now - player.timestamp > STALE_MS;
   const color = player.color ?? playerColor(player.playerName);
   const located = player.lat != null && player.lng != null;
+  const locationLive = player.locationLive !== false;
 
   return (
     <div
@@ -83,7 +84,13 @@ function PlayerCard({
       tabIndex={located ? 0 : -1}
       onClick={() => located && onFocus(player)}
       onKeyDown={(e) => located && (e.key === "Enter" || e.key === " ") && onFocus(player)}
-      title={located ? "Click to fly the map to this player" : "No live location yet"}
+      title={
+        located
+          ? locationLive
+            ? "Click to fly the map to this player"
+            : "Click to fly the map to this player's last known location"
+          : "No location yet"
+      }
       style={{ borderLeftColor: color, borderLeftWidth: 4 }}
       className={`flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition-shadow ${
         located ? "cursor-pointer hover:shadow-md" : ""

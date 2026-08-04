@@ -242,13 +242,19 @@ export default function AdminMapPane({
     });
   }, [trip.hiddenGems]);
 
-  // ---- live player markers, colorized per-player so the admin can tell
-  // travelers apart at a glance. Also auto-pans/zooms to reveal anyone whose
-  // location shows up for the first time since this map mounted — without
-  // this, a player who joins (or gets their first GPS fix) after the admin
-  // already opened the dashboard would be invisible off-screen until a
-  // manual page refresh happened to fit them into view. Skipped on the very
-  // first run so it doesn't fight the day's own fitBounds on initial load. ----
+  // ---- player markers, colorized per-player so the admin can tell
+  // travelers apart at a glance. A player who has stopped sharing live
+  // location (locationLive: false) still gets a marker at their last known
+  // spot instead of vanishing — useSyncTelemetry merge-writes and omits
+  // lat/lng rather than nulling them out specifically so this stays
+  // possible — just dimmed and pinned rather than a solid live dot, and
+  // labeled "last seen" so it reads as history, not a current position.
+  // Also auto-pans/zooms to reveal anyone whose location shows up for the
+  // first time since this map mounted — without this, a player who joins
+  // (or gets their first GPS fix) after the admin already opened the
+  // dashboard would be invisible off-screen until a manual page refresh
+  // happened to fit them into view. Skipped on the very first run so it
+  // doesn't fight the day's own fitBounds on initial load. ----
   const seenLocatedPlayersRef = useRef<Set<string>>(new Set());
   const playersEverRenderedRef = useRef(false);
 
@@ -261,11 +267,21 @@ export default function AdminMapPane({
     const located = players.filter((p) => p.lat != null && p.lng != null);
     located.forEach((p) => {
       const color = p.color ?? playerColor(p.playerName);
+      // Missing locationLive means a doc written before this field existed —
+      // treat that the same as live, matching the old (lat/lng-always-fresh)
+      // behavior for those docs.
+      const isLive = p.locationLive !== false;
       const el = document.createElement("div");
       el.className = "flex flex-col items-center gap-1";
-      el.innerHTML = `
+      el.style.opacity = isLive ? "1" : "0.6";
+      el.innerHTML = isLive
+        ? `
         <div style="width:16px;height:16px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
         <div style="font-size:11px;font-weight:600;color:#292524;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap;border:1.5px solid ${color}">${p.playerName}</div>
+      `
+        : `
+        <div style="width:14px;height:14px;border-radius:9999px 9999px 9999px 2px;transform:rotate(-45deg);background:${color};border:2px dashed white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>
+        <div style="font-size:11px;font-weight:600;color:#57534e;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap;border:1.5px dashed ${color}">${p.playerName} · last seen</div>
       `;
       playerMarkersRef.current[p.playerName] = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([p.lng as number, p.lat as number])

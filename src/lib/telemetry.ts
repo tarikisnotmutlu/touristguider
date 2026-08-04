@@ -8,8 +8,20 @@ export interface PlayerStats {
 /** Firestore document shape at sessions/{sessionId}/players/{playerName} —
  *  playerName IS the document id, so it isn't duplicated in the body. */
 export interface PlayerTelemetry {
+  /** Last KNOWN position — kept in Firestore even after the player stops
+   *  sharing live location (see useSyncTelemetry, which merge-writes and
+   *  simply omits lat/lng rather than nulling them out), so the admin map
+   *  can still show a "last seen here" pin instead of the marker vanishing
+   *  entirely. Only ever null for a player who has never had a GPS fix. */
   lat: number | null;
   lng: number | null;
+  /** True only on a beat where the player's device actually had a live
+   *  GPS fix (their day is started and geolocation is watching) — false
+   *  once they stop sharing, even though lat/lng above still holds their
+   *  last position. Missing on docs written before this field existed;
+   *  treat that the same as `true` (the old behavior always implied live
+   *  whenever lat/lng were present at all). */
+  locationLive?: boolean;
   stats: PlayerStats;
   timestamp: number;
   /** Deterministic per-player hex color (see lib/playerColor.ts) — persisted

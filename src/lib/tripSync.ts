@@ -418,11 +418,19 @@ export async function saveEditsToFirestore(sessionId: string, trip: Trip): Promi
   const finalTrip: Trip = { ...trip, days: resolvedDays };
 
   const batch = writeBatch(getDb());
-  batch.set(sessionDocRef(sessionId), {
-    title: finalTrip.title,
-    dayOrder: finalTrip.days.map((d) => d.id),
-    unplanned: finalTrip.unplanned,
-  });
+  // merge: true — an unqualified set() here would silently wipe out
+  // password/createdAt (fields this write knows nothing about) every time
+  // anyone saved an edit, locking the lobby out of a session the moment it
+  // was ever edited.
+  batch.set(
+    sessionDocRef(sessionId),
+    {
+      title: finalTrip.title,
+      dayOrder: finalTrip.days.map((d) => d.id),
+      unplanned: finalTrip.unplanned,
+    },
+    { merge: true }
+  );
   finalTrip.days.forEach((day) => batch.set(dayDocRef(sessionId, day.id), dayToDoc(day)));
   const currentDayIds = new Set(finalTrip.days.map((d) => d.id));
   (before?.days ?? []).forEach((d) => {

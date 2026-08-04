@@ -46,18 +46,28 @@ export function useSyncTelemetry() {
       if (evicted) return;
       const journey = useJourneyStore.getState();
       try {
-        await setDoc(playerDocRef(sessionId, playerName), {
-          lat: journey.liveLocation?.lat ?? null,
-          lng: journey.liveLocation?.lng ?? null,
-          stats: {
-            hunger: journey.hunger,
-            thirst: journey.thirst,
-            catCount: journey.catsPetted,
-            fatigueLevel: journey.fatigue,
+        // merge: true, and lat/lng are only included when there's an actual
+        // live fix — omitting them (rather than writing null) leaves the
+        // player's last known position untouched in Firestore once they
+        // stop sharing, so the admin map can keep showing a "last seen
+        // here" pin instead of the marker disappearing outright.
+        // `locationLive` is what tells the admin UI which case it's in.
+        await setDoc(
+          playerDocRef(sessionId, playerName),
+          {
+            ...(journey.liveLocation ? { lat: journey.liveLocation.lat, lng: journey.liveLocation.lng } : {}),
+            locationLive: !!journey.liveLocation,
+            stats: {
+              hunger: journey.hunger,
+              thirst: journey.thirst,
+              catCount: journey.catsPetted,
+              fatigueLevel: journey.fatigue,
+            },
+            timestamp: Date.now(),
+            color: playerColor(playerName),
           },
-          timestamp: Date.now(),
-          color: playerColor(playerName),
-        });
+          { merge: true }
+        );
       } catch {
         // Best-effort — a missed beat just means a stale dot on the GM's map.
       }
