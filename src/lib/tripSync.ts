@@ -108,7 +108,7 @@ export async function sessionExists(sessionId: string): Promise<boolean> {
   return snap.exists();
 }
 
-/** Explicit Game Master "New Session" action — unlike ensureSessionExists
+/** Explicit Admin "New Session" action — unlike ensureSessionExists
  *  (which is fine reusing an existing session so a returning player's link
  *  keeps working), this is a deliberate create and the caller is expected
  *  to have already confirmed the id is free via sessionExists first. */

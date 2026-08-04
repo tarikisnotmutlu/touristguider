@@ -143,12 +143,12 @@ interface JourneyState {
   showGemHint: () => void;
   clearGemHint: () => void;
 
-  /** Applied when useSyncTelemetry picks up a Game Master override (see
+  /** Applied when useSyncTelemetry picks up a Admin override (see
    *  sessions/{sessionId}/players/{playerName}/overrides) — reuses the same
    *  stat fields the player's own HUD taps write to, so a GM "heal" looks
    *  identical to the player doing it themselves, just remotely triggered.
    *  `text` is only meaningful for the "message" action — a free-form note
-   *  from the Game Master, sent to this one player and no one else. */
+   *  from the Admin, sent to this one player and no one else. */
   applyGmOverride: (action: GmAction, text?: string) => void;
   gmMessage: string | null;
   clearGmMessage: () => void;
@@ -280,7 +280,7 @@ export const useJourneyStore = create<JourneyState>()(
       applyGmOverride: (action, text) =>
         set((s) => {
           if (action === "message") {
-            return { gmMessage: text?.trim() || "The Game Master sent you a message." };
+            return { gmMessage: text?.trim() || "The Admin sent you a message." };
           }
           const message = GM_ACTION_MESSAGE[action];
           switch (action) {

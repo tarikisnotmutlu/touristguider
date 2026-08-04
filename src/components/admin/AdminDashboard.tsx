@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { addDoc, onSnapshot } from "firebase/firestore";
+import { addDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import {
   GM_ACTION_LABEL,
   type GmAction,
   type GmOverride,
   type NamedPlayerTelemetry,
+  type PlayerStats,
   type PlayerTelemetry,
 } from "@/lib/telemetry";
-import { playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
+import { playerDocRef, playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
 import { createSession, deletePlayer, deleteSession, sessionExists, subscribeToTrip } from "@/lib/tripSync";
 import { playerColor } from "@/lib/playerColor";
 import type { Trip } from "@/lib/types";
@@ -182,7 +183,7 @@ function PinGate({ onAuthed }: { onAuthed: () => void }) {
   return (
     <div className="flex h-dvh w-full items-center justify-center bg-stone-50">
       <form onSubmit={handleSubmit} className="flex w-72 flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-6 shadow-lg">
-        <h1 className="text-center text-lg font-bold tracking-tight text-stone-800">🎩 Game Master</h1>
+        <h1 className="text-center text-lg font-bold tracking-tight text-stone-800">🎩 Admin</h1>
         <input
           type="password"
           inputMode="numeric"
@@ -321,7 +322,7 @@ function MessageForm({ playerName, onSend, onCancel, sending }: {
   );
 }
 
-/** The Game Master dashboard — a single always-visible pane (no tabs): a
+/** The Admin dashboard — a single always-visible pane (no tabs): a
  *  session switcher (create/delete), a day selector + route/gem toggles
  *  driving one shared map, and a player roster with GM actions, targeted
  *  messaging, and deletion, all live via Firestore onSnapshot. */
@@ -449,19 +450,27 @@ export default function AdminDashboard() {
     }
   }
 
-  /** Every traveler's hunger/thirst/fatigue/cat count lives only in their own
-   *  phone's localStorage (never synced to the trip itself), so there's no
-   *  single place to reset them from — this queues the same reset_stats
-   *  override onto every currently known player. */
+  /** Every traveler's hunger/thirst/fatigue/cat count normally lives in their
+   *  own phone's localStorage, only mirrored to Firestore every ~20s while
+   *  their app is open — an override alone would sit queued and invisible
+   *  until they reopen. This writes the reset straight to each player's
+   *  Firestore doc first (works instantly, no player device needed — the
+   *  admin dashboard reads only that doc, never localStorage), then also
+   *  queues the override so an online player's local state — and next
+   *  telemetry beat — stays in sync instead of clobbering the reset. */
   async function handleResetAllStats() {
     const action: GmAction = "reset_stats";
+    const resetStats: PlayerStats = { hunger: 100, thirst: 100, catCount: 0, fatigueLevel: 0 };
     setResettingAll(true);
     try {
       await Promise.all(
-        players.map((p) => {
+        players.map(async (p) => {
+          await updateDoc(playerDocRef(selectedSessionId, p.playerName), { stats: resetStats }).catch(() => {
+            // Best-effort — a missed player just keeps their current stats.
+          });
           const override: GmOverride = { action, createdAt: Date.now() };
           return addDoc(playerOverridesCollection(selectedSessionId, p.playerName), override).catch(() => {
-            // Best-effort — a missed player just keeps their current stats.
+            // Best-effort — the direct Firestore write above already applied.
           });
         })
       );
@@ -483,7 +492,7 @@ export default function AdminDashboard() {
   return (
     <div className="flex h-dvh w-full flex-col bg-stone-50">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-stone-200 bg-white px-4 py-2">
-        <h1 className="text-sm font-bold tracking-tight text-stone-800">🎩 Game Master</h1>
+        <h1 className="text-sm font-bold tracking-tight text-stone-800">🎩 Admin</h1>
 
         <select
           value={selectedSessionId}

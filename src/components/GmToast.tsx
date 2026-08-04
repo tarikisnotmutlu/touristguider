@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useJourneyStore } from "@/store/useJourneyStore";
 
-/** Surfaces a message the moment useSyncTelemetry applies a Game Master
+/** Surfaces a message the moment useSyncTelemetry applies a Admin
  *  override (heal, water, cat, cure fatigue, or a free-form message) picked
  *  up from the player's own overrides subscription. Display time scales
  *  with length so a longer, free-typed GM message has time to actually be

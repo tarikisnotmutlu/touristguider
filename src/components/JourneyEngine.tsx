@@ -25,10 +25,10 @@ const WALK_DECAY_MULTIPLIER = 1.5;
  *  4. Geofences the live position against the day's next incomplete stop, and
  *     syncs fatigue/hunger when a step is freshly checked off.
  *  5. Geofences the live position against geo-locked hidden gems.
- *  6. Via useSyncTelemetry: reports location/stats to the Game Master
+ *  6. Via useSyncTelemetry: reports location/stats to the Admin
  *     dashboard and applies any GM overrides it queues.
  *
- *  Hidden gems the Game Master places arrive live via TripLoader's Firestore
+ *  Hidden gems the Admin places arrive live via TripLoader's Firestore
  *  gems subscription (no polling needed) — this file only reacts to them.
  */
 export default function JourneyEngine() {

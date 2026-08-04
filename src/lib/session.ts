@@ -49,3 +49,12 @@ export function hasPlayerName(): boolean {
 export function hasSessionIdentity(): boolean {
   return hasPlayerName() && hasSessionId();
 }
+
+/** Forgets both identity pieces so the onboarding gate reappears on next
+ *  render — lets someone leave their current nickname/session and rejoin
+ *  under a different one without clearing browser storage by hand. */
+export function clearSessionIdentity() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SESSION_ID_KEY);
+  window.localStorage.removeItem(PLAYER_NAME_KEY);
+}

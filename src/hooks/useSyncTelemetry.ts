@@ -12,7 +12,7 @@ import type { GmOverride } from "@/lib/telemetry";
 const TELEMETRY_POST_MS = 20000;
 
 /**
- * The traveler-side half of the Game Master architecture: periodically
+ * The traveler-side half of the Admin architecture: periodically
  * writes this browser's live location + RPG stats to
  * sessions/{sessionId}/players/{playerName} for the admin dashboard's live
  * map and player cards, and listens in real time (onSnapshot, no polling)

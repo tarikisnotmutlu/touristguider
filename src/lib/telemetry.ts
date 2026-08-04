@@ -29,7 +29,7 @@ export type GmAction = "full_heal" | "send_water" | "gift_cat" | "cure_fatigue" 
 
 /** Firestore document shape at .../players/{playerName}/overrides/{id}.
  *  `text` is only set (and only meaningful) for the "message" action — a
- *  free-form note from the Game Master, shown via the same GmToast every
+ *  free-form note from the Admin, shown via the same GmToast every
  *  other override uses, delivered to that one player's own overrides
  *  subcollection and nobody else's. */
 export interface GmOverride {
@@ -48,12 +48,12 @@ export const GM_ACTION_LABEL: Record<GmAction, string> = {
 };
 
 // "message" deliberately has no static entry here — its text comes from the
-// override's own `text` field (set per-send by the Game Master), not a
+// override's own `text` field (set per-send by the Admin), not a
 // fixed string like every other action.
 export const GM_ACTION_MESSAGE: Record<Exclude<GmAction, "message">, string> = {
-  full_heal: "The Game Master fully healed you! ✨",
-  send_water: "The Game Master sent you water! 💧",
-  gift_cat: "The Game Master sent a mystical cat! 🐾 +1",
-  cure_fatigue: "The Game Master cured your fatigue! 🌿",
-  reset_stats: "The Game Master reset your stats! 🔄",
+  full_heal: "The Admin fully healed you! ✨",
+  send_water: "The Admin sent you water! 💧",
+  gift_cat: "The Admin sent a mystical cat! 🐾 +1",
+  cure_fatigue: "The Admin cured your fatigue! 🌿",
+  reset_stats: "The Admin reset your stats! 🔄",
 };

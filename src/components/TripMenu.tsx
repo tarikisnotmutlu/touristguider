@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTripStore } from "@/store/useTripStore";
-import { setSessionId, slugifySessionId } from "@/lib/session";
+import { clearSessionIdentity, getPlayerName, setSessionId, slugifySessionId } from "@/lib/session";
 
 /** Session-aware replacement for the old per-trip "My trips" menu — there's
  *  no longer a URL to bookmark, just a session id shared verbally/by text
@@ -34,6 +34,12 @@ export default function TripMenu() {
     const slug = slugifySessionId(newSessionInput);
     if (!slug) return;
     setSessionId(slug);
+    window.location.reload();
+  }
+
+  function handleExit() {
+    if (!confirm("Leave this session? You'll be able to rejoin with a new nickname and/or session id.")) return;
+    clearSessionIdentity();
     window.location.reload();
   }
 
@@ -91,6 +97,17 @@ export default function TripMenu() {
                   🔀 Switch session
                 </button>
               )}
+            </div>
+
+            <div className="mt-1 border-t border-stone-200/70 pt-2">
+              <button
+                onClick={handleExit}
+                type="button"
+                title="Leave this session and pick a new nickname"
+                className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm text-terracotta-600 hover:bg-terracotta-50"
+              >
+                🚪 Exit — change nickname{getPlayerName() ? ` (currently ${getPlayerName()})` : ""}
+              </button>
             </div>
           </motion.div>
         )}

@@ -51,7 +51,7 @@ export interface FocusRequest {
 }
 
 /**
- * One shared map for everything the Game Master used to need three separate
+ * One shared map for everything the Admin used to need three separate
  * tabs for: the selected day's route/stops, every Hidden Gem (with
  * click-to-drop placement), and every player's live location — all in the
  * same view, so switching what you're looking at is a toggle, not a
