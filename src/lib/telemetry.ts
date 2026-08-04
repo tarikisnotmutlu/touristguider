@@ -57,3 +57,31 @@ export const GM_ACTION_MESSAGE: Record<Exclude<GmAction, "message">, string> = {
   cure_fatigue: "The Admin cured your fatigue! 🌿",
   reset_stats: "The Admin reset your stats! 🔄",
 };
+
+/** Same water-refill amount the player's own "drink water" HUD button
+ *  applies — shared here so the Admin's direct Firestore write (see
+ *  applyGmActionToStats) and the player's local useJourneyStore stay
+ *  numerically identical. */
+export const GM_WATER_BOOST = 30;
+
+const clampPercent = (v: number) => Math.max(0, Math.min(100, v));
+
+/** Computes the resulting PlayerStats for a GM action applied directly to a
+ *  player's Firestore doc — mirrors useJourneyStore.applyGmOverride's switch
+ *  exactly, but as a pure function so the Admin dashboard can write the
+ *  result straight to Firestore (works even if the player is offline)
+ *  instead of only queuing an override that a live client must apply. */
+export function applyGmActionToStats(stats: PlayerStats, action: Exclude<GmAction, "message">): PlayerStats {
+  switch (action) {
+    case "full_heal":
+      return { ...stats, hunger: 100, thirst: 100, fatigueLevel: 0 };
+    case "send_water":
+      return { ...stats, thirst: clampPercent(stats.thirst + GM_WATER_BOOST) };
+    case "cure_fatigue":
+      return { ...stats, fatigueLevel: 0 };
+    case "gift_cat":
+      return { ...stats, catCount: stats.catCount + 1 };
+    case "reset_stats":
+      return { hunger: 100, thirst: 100, fatigueLevel: 0, catCount: 0 };
+  }
+}

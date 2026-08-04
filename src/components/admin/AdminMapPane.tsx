@@ -243,26 +243,52 @@ export default function AdminMapPane({
   }, [trip.hiddenGems]);
 
   // ---- live player markers, colorized per-player so the admin can tell
-  // travelers apart at a glance ----
+  // travelers apart at a glance. Also auto-pans/zooms to reveal anyone whose
+  // location shows up for the first time since this map mounted — without
+  // this, a player who joins (or gets their first GPS fix) after the admin
+  // already opened the dashboard would be invisible off-screen until a
+  // manual page refresh happened to fit them into view. Skipped on the very
+  // first run so it doesn't fight the day's own fitBounds on initial load. ----
+  const seenLocatedPlayersRef = useRef<Set<string>>(new Set());
+  const playersEverRenderedRef = useRef(false);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     Object.values(playerMarkersRef.current).forEach((m) => m.remove());
     playerMarkersRef.current = {};
-    players
-      .filter((p) => p.lat != null && p.lng != null)
-      .forEach((p) => {
-        const color = p.color ?? playerColor(p.playerName);
-        const el = document.createElement("div");
-        el.className = "flex flex-col items-center gap-1";
-        el.innerHTML = `
-          <div style="width:16px;height:16px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
-          <div style="font-size:11px;font-weight:600;color:#292524;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap;border:1.5px solid ${color}">${p.playerName}</div>
-        `;
-        playerMarkersRef.current[p.playerName] = new maplibregl.Marker({ element: el, anchor: "bottom" })
-          .setLngLat([p.lng as number, p.lat as number])
-          .addTo(map);
-      });
+
+    const located = players.filter((p) => p.lat != null && p.lng != null);
+    located.forEach((p) => {
+      const color = p.color ?? playerColor(p.playerName);
+      const el = document.createElement("div");
+      el.className = "flex flex-col items-center gap-1";
+      el.innerHTML = `
+        <div style="width:16px;height:16px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
+        <div style="font-size:11px;font-weight:600;color:#292524;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap;border:1.5px solid ${color}">${p.playerName}</div>
+      `;
+      playerMarkersRef.current[p.playerName] = new maplibregl.Marker({ element: el, anchor: "bottom" })
+        .setLngLat([p.lng as number, p.lat as number])
+        .addTo(map);
+    });
+
+    const newlyLocated = located.filter((p) => !seenLocatedPlayersRef.current.has(p.playerName));
+    if (playersEverRenderedRef.current && newlyLocated.length > 0) {
+      const bounds = located.reduce(
+        (b, p) => b.extend([p.lng as number, p.lat as number]),
+        new maplibregl.LngLatBounds(
+          [located[0].lng as number, located[0].lat as number],
+          [located[0].lng as number, located[0].lat as number]
+        )
+      );
+      try {
+        map.fitBounds(bounds, { padding: 100, maxZoom: 16, duration: 800 });
+      } catch {
+        // best-effort only
+      }
+    }
+    playersEverRenderedRef.current = true;
+    seenLocatedPlayersRef.current = new Set(located.map((p) => p.playerName));
   }, [players]);
 
   // ---- click-to-focus: fly the camera to a player's live location when

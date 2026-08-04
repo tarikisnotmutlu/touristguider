@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { addDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import {
+  applyGmActionToStats,
   GM_ACTION_LABEL,
   type GmAction,
   type GmOverride,
   type NamedPlayerTelemetry,
-  type PlayerStats,
   type PlayerTelemetry,
 } from "@/lib/telemetry";
 import { playerDocRef, playerOverridesCollection, playersCollection, sessionsCollection } from "@/lib/firestorePaths";
@@ -408,9 +408,23 @@ export default function AdminDashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  /** Same offline-safe pattern as handleResetAllStats: write the new stats
+   *  straight to the player's Firestore doc (works whether or not their app
+   *  is open) and queue the override too, so an online player's local state
+   *  and next telemetry beat land on the same numbers instead of the old
+   *  local value clobbering the direct write. */
   async function handleAction(playerName: string, action: GmAction) {
+    if (action === "message") return;
     setPendingPlayerName(playerName);
     try {
+      const current = players.find((p) => p.playerName === playerName);
+      if (current) {
+        await updateDoc(playerDocRef(selectedSessionId, playerName), {
+          stats: applyGmActionToStats(current.stats, action),
+        }).catch(() => {
+          // Best-effort — the queued override below still reaches an online player.
+        });
+      }
       const override: GmOverride = { action, createdAt: Date.now() };
       await addDoc(playerOverridesCollection(selectedSessionId, playerName), override);
     } finally {
@@ -460,12 +474,13 @@ export default function AdminDashboard() {
    *  telemetry beat — stays in sync instead of clobbering the reset. */
   async function handleResetAllStats() {
     const action: GmAction = "reset_stats";
-    const resetStats: PlayerStats = { hunger: 100, thirst: 100, catCount: 0, fatigueLevel: 0 };
     setResettingAll(true);
     try {
       await Promise.all(
         players.map(async (p) => {
-          await updateDoc(playerDocRef(selectedSessionId, p.playerName), { stats: resetStats }).catch(() => {
+          await updateDoc(playerDocRef(selectedSessionId, p.playerName), {
+            stats: applyGmActionToStats(p.stats, action),
+          }).catch(() => {
             // Best-effort — a missed player just keeps their current stats.
           });
           const override: GmOverride = { action, createdAt: Date.now() };

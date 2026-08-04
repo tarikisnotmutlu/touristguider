@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { LatLng } from "@/lib/types";
 import { istanbulDateString } from "@/lib/istanbulDate";
-import { GM_ACTION_MESSAGE, type GmAction } from "@/lib/telemetry";
+import { GM_ACTION_MESSAGE, GM_WATER_BOOST, type GmAction } from "@/lib/telemetry";
 
 /**
  * Ephemeral "real-life RPG" state for the live trip experience — deliberately
@@ -34,7 +34,6 @@ const THIRST_DECAY_PER_MIN = 100 / 60;
 const HUNGER_DECAY_PER_MIN = 100 / 240;
 
 const FATIGUE_RECOVERY_PER_SEC = 100 / 90;
-const WATER_BOOST = 30;
 const MEAL_BOOST = 40;
 /** ~1300 steps/km, scaled down so a full day of walking reads as meaningful
  *  fatigue without instantly maxing the bar out on the first stop. */
@@ -198,7 +197,7 @@ export const useJourneyStore = create<JourneyState>()(
       feed: (amount) =>
         set((s) => ({ hunger: clampPercent(s.hunger + amount), lastUpdatedTimestamp: Date.now() })),
       drinkWater: () =>
-        set((s) => ({ thirst: clampPercent(s.thirst + WATER_BOOST), lastUpdatedTimestamp: Date.now() })),
+        set((s) => ({ thirst: clampPercent(s.thirst + GM_WATER_BOOST), lastUpdatedTimestamp: Date.now() })),
       tickRecovery: (seconds) =>
         set((s) => ({ fatigue: Math.max(0, s.fatigue - FATIGUE_RECOVERY_PER_SEC * seconds) })),
       tickMinuteDecay: (minutes, multiplier) =>
@@ -287,7 +286,7 @@ export const useJourneyStore = create<JourneyState>()(
             case "full_heal":
               return { hunger: 100, thirst: 100, fatigue: 0, lastUpdatedTimestamp: Date.now(), gmMessage: message };
             case "send_water":
-              return { thirst: clampPercent(s.thirst + WATER_BOOST), lastUpdatedTimestamp: Date.now(), gmMessage: message };
+              return { thirst: clampPercent(s.thirst + GM_WATER_BOOST), lastUpdatedTimestamp: Date.now(), gmMessage: message };
             case "cure_fatigue":
               return { fatigue: 0, gmMessage: message };
             case "gift_cat": {
