@@ -106,6 +106,7 @@ export function useSyncTelemetry() {
       unsubOverrides();
       unsubSelf();
       useJourneyStore.getState().stopDay();
+      useJourneyStore.getState().stopLocationSharing();
 
       alert("You have been removed from the session by the admin.");
 

@@ -21,7 +21,9 @@ const WALK_DECAY_MULTIPLIER = 1.5;
  *  1. Fatigue recovery while resting, every TICK_MS, plus the Istanbul
  *     midnight rollover check.
  *  2. Hunger/thirst decay once a minute, with a walking-speed multiplier.
- *  3. Manages the navigator.geolocation.watchPosition lifecycle tied to `dayStarted`.
+ *  3. Manages the navigator.geolocation.watchPosition lifecycle for the
+ *     whole time the app is open (not tied to `dayStarted` — see the
+ *     effect itself for why).
  *  4. Geofences the live position against the day's next incomplete stop, and
  *     syncs fatigue/hunger when a step is freshly checked off.
  *  5. Geofences the live position against geo-locked hidden gems.
@@ -32,7 +34,6 @@ const WALK_DECAY_MULTIPLIER = 1.5;
  *  gems subscription (no polling needed) — this file only reacts to them.
  */
 export default function JourneyEngine() {
-  const dayStarted = useJourneyStore((s) => s.dayStarted);
   const lastDecayLocationRef = useRef<LatLng | null>(null);
 
   useSyncTelemetry();
@@ -87,8 +88,16 @@ export default function JourneyEngine() {
   }, []);
 
   // --- 3. geolocation watch lifecycle ---
+  // Runs for the whole time the app is open, independent of `dayStarted` —
+  // the Admin wants to see where someone is the moment they join, not only
+  // after they've found and tapped "Start Day" (a step easy to miss, and
+  // the #1 reason a traveler's dot silently never appeared on the admin
+  // map). `dayStarted` still separately gates the RPG mechanics that
+  // consume liveLocation (fatigue/hunger decay pacing, arrival/gem
+  // geofencing) — see their own `journey.dayStarted` checks below — so
+  // sharing location earlier doesn't change when those kick in. Only
+  // stopLocationSharing (session eviction) actually tears this down.
   useEffect(() => {
-    if (!dayStarted) return;
     if (typeof navigator === "undefined" || !navigator.geolocation) return;
 
     const id = navigator.geolocation.watchPosition(
@@ -105,7 +114,7 @@ export default function JourneyEngine() {
     useJourneyStore.getState().setWatchId(id);
 
     return () => navigator.geolocation.clearWatch(id);
-  }, [dayStarted]);
+  }, []);
 
   // --- 4a. geofencing: distance to the day's next incomplete stop ---
   useEffect(() => {

@@ -95,7 +95,19 @@ interface JourneyState {
   liveLocation: LatLng | null;
   watchId: number | null;
   startDay: () => void;
+  /** Ends the RPG "day" (fatigue/hunger decay pacing, gem/arrival
+   *  geofencing eligibility) — deliberately does NOT touch the geolocation
+   *  watch. Location sharing with the Admin runs continuously from the
+   *  moment the app mounts (see JourneyEngine) independent of whether a
+   *  "day" is active, so the Admin can still see where someone is even
+   *  after they've stopped for the day. Use stopLocationSharing to
+   *  actually stop transmitting location (e.g. on eviction). */
   stopDay: () => void;
+  /** Actually tears down the geolocation watch and clears the last known
+   *  position — the real "stop sharing location" action, separate from
+   *  stopDay. Only called on session eviction (see useSyncTelemetry); a
+   *  regular player ending their day should keep sharing location. */
+  stopLocationSharing: () => void;
   setWatchId: (id: number | null) => void;
   setLiveLocation: (loc: LatLng | null) => void;
 
@@ -185,12 +197,13 @@ export const useJourneyStore = create<JourneyState>()(
       liveLocation: null,
       watchId: null,
       startDay: () => set({ dayStarted: true }),
-      stopDay: () => {
+      stopDay: () => set({ dayStarted: false, restingStepId: null }),
+      stopLocationSharing: () => {
         const id = get().watchId;
         if (id != null && typeof navigator !== "undefined" && navigator.geolocation) {
           navigator.geolocation.clearWatch(id);
         }
-        set({ dayStarted: false, watchId: null, liveLocation: null, restingStepId: null });
+        set({ watchId: null, liveLocation: null });
       },
       setWatchId: (id) => set({ watchId: id }),
       setLiveLocation: (loc) => set({ liveLocation: loc }),
