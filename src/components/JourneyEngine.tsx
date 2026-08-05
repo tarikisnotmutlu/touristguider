@@ -177,7 +177,7 @@ export default function JourneyEngine() {
         if (journey.discoveredGemIds.includes(gem.id)) continue;
         const distanceM = haversineMeters(journey.liveLocation, { lat: gem.lat, lng: gem.lng });
         if (distanceM <= (gem.radiusM ?? GEM_UNLOCK_RADIUS_M)) {
-          journey.triggerGemUnlock(gem.id, gem.note, gem.imageUrl);
+          journey.triggerGemUnlock(gem.id, gem.note, gem.imageUrl, gem.driveSecretUrl);
           vibrate([100, 50, 100, 50, 200]);
         }
       }

@@ -150,6 +150,7 @@ export default function MapView() {
   const movingStartPointDayId = useJourneyStore((s) => s.movingStartPointDayId);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
   const panelView = useJourneyStore((s) => s.panelView);
+  const discoveredGemIds = useJourneyStore((s) => s.discoveredGemIds);
   const day = trip.days[activeDayIndex];
   const overviewMode = panelView === "overview";
   // In overview mode every day renders at once, each carrying its own real
@@ -705,7 +706,7 @@ export default function MapView() {
     if (!map) return;
     gemMarkersRef.current.forEach((m) => m.remove());
     gemMarkersRef.current = trip.hiddenGems.map((gem) => {
-      const el = createGemMarkerEl();
+      const el = createGemMarkerEl(discoveredGemIds.includes(gem.id));
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
         useTripStore.getState().setActiveGemId(gem.id);
@@ -714,7 +715,7 @@ export default function MapView() {
         .setLngLat([gem.lng, gem.lat])
         .addTo(map);
     });
-  }, [trip.hiddenGems]);
+  }, [trip.hiddenGems, discoveredGemIds]);
 
   // ---- live location marker ----
   useEffect(() => {

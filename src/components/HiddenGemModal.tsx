@@ -15,7 +15,9 @@ const UNLOCK_RADIUS_M = 20;
  *  more desktop "I'm the creator, just show me the note" bypass. In range
  *  (or not geo-locked at all) triggers the full-screen reveal below; still
  *  out of range shows the "get closer" toast; a geolocation failure shows a
- *  small inline error card. */
+ *  small inline error card. Once a gem has been discovered once, it's
+ *  permanently open — later taps skip the geofence check entirely and
+ *  replay the reveal straight away. */
 export default function HiddenGemModal() {
   const trip = useTripStore((s) => s.trip);
   const activeGemId = useTripStore((s) => s.activeGemId);
@@ -39,7 +41,8 @@ export default function HiddenGemModal() {
     const radiusM = gem.radiusM ?? UNLOCK_RADIUS_M;
 
     Promise.resolve().then(() => {
-      if (!geoLocked) {
+      const alreadyDiscovered = useJourneyStore.getState().discoveredGemIds.includes(gemId);
+      if (!geoLocked || alreadyDiscovered) {
         triggerGemUnlock(gemId, note, imageSrc, driveSecretUrl);
         setActiveGemId(null);
         return;

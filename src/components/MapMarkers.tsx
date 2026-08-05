@@ -90,9 +90,9 @@ export function createGhostMarkerEl(): HTMLDivElement {
   return el;
 }
 
-export function createGemMarkerEl(): HTMLDivElement {
+export function createGemMarkerEl(discovered = false): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "tg-gem-marker";
+  el.className = discovered ? "tg-gem-marker tg-gem-marker-discovered" : "tg-gem-marker";
   el.textContent = "✨";
   return el;
 }

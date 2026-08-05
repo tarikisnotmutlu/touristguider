@@ -133,8 +133,10 @@ interface JourneyState {
   lastResetDate: string | null;
   checkMidnightReset: () => void;
 
-  /** Hidden gems the visitor has physically unlocked at least once — a
-   *  geo-locked gem only shows its full reveal modal the first time. */
+  /** Hidden gems the visitor has physically unlocked at least once — once a
+   *  gem is in here it's permanently open: tapping it again always replays
+   *  the full reveal modal (see HiddenGemModal), skipping the geofence
+   *  check, and its map marker renders faded (see MapMarkers). */
   discoveredGemIds: string[];
   unlockedGem: UnlockedGemInfo | null;
   triggerGemUnlock: (id: string, note: string, imageUrl?: string, driveSecretUrl?: string) => void;
@@ -268,13 +270,10 @@ export const useJourneyStore = create<JourneyState>()(
       discoveredGemIds: [],
       unlockedGem: null,
       triggerGemUnlock: (id, note, imageUrl, driveSecretUrl) =>
-        set((s) => {
-          if (s.discoveredGemIds.includes(id)) return {};
-          return {
-            unlockedGem: { id, note, imageUrl, driveSecretUrl },
-            discoveredGemIds: [...s.discoveredGemIds, id],
-          };
-        }),
+        set((s) => ({
+          unlockedGem: { id, note, imageUrl, driveSecretUrl },
+          discoveredGemIds: s.discoveredGemIds.includes(id) ? s.discoveredGemIds : [...s.discoveredGemIds, id],
+        })),
       clearGemUnlock: () => set({ unlockedGem: null }),
 
       gemHintVisible: false,
