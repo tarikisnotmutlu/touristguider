@@ -396,6 +396,7 @@ function GemCreateForm({
   const [radiusM, setRadiusM] = useState(String(DEFAULT_GEM_RADIUS_M));
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [driveSecretUrl, setDriveSecretUrl] = useState("");
 
   const radiusNum = Number(radiusM);
   const canSave = note.trim().length > 0 && radiusM.trim() !== "" && !Number.isNaN(radiusNum) && radiusNum > 0;
@@ -417,6 +418,7 @@ function GemCreateForm({
         geoLocked,
         name: name.trim() || undefined,
         radiusM: radiusNum,
+        driveSecretUrl: driveSecretUrl.trim() || undefined,
       },
       photoFile
     );
@@ -475,6 +477,15 @@ function GemCreateForm({
               </button>
             </div>
           )}
+        </label>
+        <label className="mt-2 flex flex-col gap-1.5">
+          <span className="text-xs text-stone-500">Secret Google Drive Link (Optional)</span>
+          <input
+            value={driveSecretUrl}
+            onChange={(e) => setDriveSecretUrl(e.target.value)}
+            placeholder="https://drive.google.com/file/d/…/view"
+            className="w-full rounded-lg border border-stone-200 bg-white/80 px-2.5 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:border-terracotta-400 focus:outline-none"
+          />
         </label>
         {error && <p className="mt-2 text-[11px] leading-relaxed text-terracotta-600">{error}</p>}
         <label className="mt-2.5 flex items-center gap-2 text-xs text-stone-600">
@@ -535,6 +546,11 @@ function GemDetailPanel({ gem, onClose, onDelete }: { gem: HiddenGem; onClose: (
             {gem.lat.toFixed(5)}, {gem.lng.toFixed(5)} · {gem.geoLocked ? `🔒 ${gem.radiusM ?? 20}m` : "not geo-locked"}
           </p>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-stone-600">{gem.note}</p>
+          {gem.driveSecretUrl && (
+            <p className="mt-2 truncate text-[11px] text-terracotta-600" title={gem.driveSecretUrl}>
+              📷 Secret photo reward linked
+            </p>
+          )}
           <div className="mt-3 flex justify-end gap-2">
             <button onClick={onClose} type="button" className="rounded-full px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-100">
               Close

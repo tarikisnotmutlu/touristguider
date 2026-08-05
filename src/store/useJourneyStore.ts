@@ -50,6 +50,9 @@ export interface UnlockedGemInfo {
   id: string;
   note: string;
   imageUrl?: string;
+  /** Raw Google Drive share link — converted to a direct, embeddable image
+   *  URL at render time by the reveal modal itself (see lib/driveLink.ts). */
+  driveSecretUrl?: string;
 }
 
 export type PanelView = "overview" | "unplanned" | "day";
@@ -134,7 +137,7 @@ interface JourneyState {
    *  geo-locked gem only shows its full reveal modal the first time. */
   discoveredGemIds: string[];
   unlockedGem: UnlockedGemInfo | null;
-  triggerGemUnlock: (id: string, note: string, imageUrl?: string) => void;
+  triggerGemUnlock: (id: string, note: string, imageUrl?: string, driveSecretUrl?: string) => void;
   clearGemUnlock: () => void;
 
   /** Brief "get closer" toast when a still-locked gem is tapped from afar. */
@@ -264,10 +267,13 @@ export const useJourneyStore = create<JourneyState>()(
 
       discoveredGemIds: [],
       unlockedGem: null,
-      triggerGemUnlock: (id, note, imageUrl) =>
+      triggerGemUnlock: (id, note, imageUrl, driveSecretUrl) =>
         set((s) => {
           if (s.discoveredGemIds.includes(id)) return {};
-          return { unlockedGem: { id, note, imageUrl }, discoveredGemIds: [...s.discoveredGemIds, id] };
+          return {
+            unlockedGem: { id, note, imageUrl, driveSecretUrl },
+            discoveredGemIds: [...s.discoveredGemIds, id],
+          };
         }),
       clearGemUnlock: () => set({ unlockedGem: null }),
 

@@ -6,6 +6,7 @@ import { useTripStore } from "@/store/useTripStore";
 import { useJourneyStore } from "@/store/useJourneyStore";
 import { haversineMeters } from "@/lib/geo";
 import { vibrate } from "@/lib/haptics";
+import { convertDriveLinkToDirectImage } from "@/lib/driveLink";
 
 const UNLOCK_RADIUS_M = 20;
 
@@ -33,12 +34,13 @@ export default function HiddenGemModal() {
     const gemId = gem.id;
     const note = gem.note;
     const imageSrc = gem.imageUrl;
+    const driveSecretUrl = gem.driveSecretUrl;
     const geoLocked = gem.geoLocked;
     const radiusM = gem.radiusM ?? UNLOCK_RADIUS_M;
 
     Promise.resolve().then(() => {
       if (!geoLocked) {
-        triggerGemUnlock(gemId, note, imageSrc);
+        triggerGemUnlock(gemId, note, imageSrc, driveSecretUrl);
         setActiveGemId(null);
         return;
       }
@@ -54,7 +56,7 @@ export default function HiddenGemModal() {
             { lat: gem.lat, lng: gem.lng }
           );
           if (d <= radiusM) {
-            triggerGemUnlock(gemId, note, imageSrc);
+            triggerGemUnlock(gemId, note, imageSrc, driveSecretUrl);
           } else {
             showGemHint();
           }
@@ -107,6 +109,7 @@ export default function HiddenGemModal() {
       <GemUnlockReveal
         note={unlockedGem?.note ?? null}
         imageSrc={unlockedGem?.imageUrl}
+        driveSecretUrl={unlockedGem?.driveSecretUrl}
         onClose={clearGemUnlock}
       />
     </>
@@ -118,12 +121,15 @@ export default function HiddenGemModal() {
 function GemUnlockReveal({
   note,
   imageSrc,
+  driveSecretUrl,
   onClose,
 }: {
   note: string | null;
   imageSrc: string | undefined;
+  driveSecretUrl: string | undefined;
   onClose: () => void;
 }) {
+  const secretPhotoUrl = driveSecretUrl ? convertDriveLinkToDirectImage(driveSecretUrl) : null;
   useEffect(() => {
     if (note != null) vibrate([100, 50, 100, 50, 200]);
   }, [note]);
@@ -162,6 +168,14 @@ function GemUnlockReveal({
               </motion.div>
               <h3 className="mt-3 text-xl font-bold tracking-tight text-stone-800">Hidden Feature Unlocked!</h3>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-stone-600">{note}</p>
+              {secretPhotoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- Admin-supplied Google Drive URL, not a local asset next/image can optimize.
+                <img
+                  src={secretPhotoUrl}
+                  alt="Secret photo reward"
+                  className="mt-4 w-full max-h-[60vh] rounded-xl object-contain shadow-lg"
+                />
+              )}
               <button
                 onClick={onClose}
                 type="button"

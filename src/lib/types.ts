@@ -96,6 +96,11 @@ export interface HiddenGem {
    *  Firebase Storage downloadURL from the Admin Hidden Gem Studio's native
    *  file upload (gems/{sessionId}/{filename}). */
   imageUrl?: string;
+  /** Raw Google Drive "shareable link" the Admin pastes in for a "secret
+   *  photo reward" — stored as-is; only ever converted to a direct,
+   *  embeddable image URL at render time (see lib/driveLink.ts), never at
+   *  save time, so the original share link is always what's in Firestore. */
+  driveSecretUrl?: string;
 }
 
 /** A saved place with no day/time slot yet — lives in the "Unplanned" tab
