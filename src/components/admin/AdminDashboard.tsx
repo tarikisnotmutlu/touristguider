@@ -108,7 +108,14 @@ function PlayerCard({
             <p className="text-sm font-bold tracking-tight text-stone-800">{player.playerName}</p>
             <p className="text-[11px] text-stone-400">
               {stale ? "Last seen " : "Live · "}
-              {new Date(player.timestamp).toLocaleTimeString()}
+              {stale
+                ? new Date(player.timestamp).toLocaleString([], {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : new Date(player.timestamp).toLocaleTimeString()}
             </p>
           </div>
         </div>

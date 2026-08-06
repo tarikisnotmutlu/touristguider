@@ -284,6 +284,15 @@ export default function AdminMapPane({
       const isLive = p.locationLive !== false && now - p.timestamp <= PLAYER_STALE_MS;
       const el = document.createElement("div");
       el.className = "flex flex-col items-center gap-1";
+      if (!isLive) {
+        // Native title attribute — a plain, no-extra-UI hover tooltip
+        // showing exactly when this position was last reported.
+        el.title = `Last seen ${new Date(p.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })}`;
+      }
       el.innerHTML = isLive
         ? `
         <div style="width:16px;height:16px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
