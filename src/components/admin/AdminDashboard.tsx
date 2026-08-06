@@ -6,6 +6,7 @@ import { addDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import {
   applyGmActionToStats,
   GM_ACTION_LABEL,
+  PLAYER_STALE_MS,
   type GmAction,
   type GmOverride,
   type NamedPlayerTelemetry,
@@ -28,7 +29,6 @@ import type { FocusRequest } from "./AdminMapPane";
 const AdminMapPane = dynamic(() => import("./AdminMapPane"), { ssr: false });
 
 const GM_ACTIONS: GmAction[] = ["full_heal", "send_water", "gift_cat", "cure_fatigue"];
-const STALE_MS = 2 * 60 * 1000;
 
 type Player = NamedPlayerTelemetry;
 
@@ -73,7 +73,7 @@ function PlayerCard({
   pending: boolean;
   now: number;
 }) {
-  const stale = now - player.timestamp > STALE_MS;
+  const stale = now - player.timestamp > PLAYER_STALE_MS;
   const color = player.color ?? playerColor(player.playerName);
   const located = player.lat != null && player.lng != null;
   const locationLive = player.locationLive !== false;
@@ -431,7 +431,10 @@ export default function AdminDashboard() {
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000);
+    // 2s, not 5s — with PLAYER_STALE_MS now down at 15s, a coarser tick would add
+    // its own extra lag on top before a closed tab's card visibly flips
+    // from "Live" to "Last seen".
+    const timer = setInterval(() => setNow(Date.now()), 2000);
     return () => clearInterval(timer);
   }, []);
 
@@ -632,6 +635,7 @@ export default function AdminDashboard() {
               onExitDropGemMode={() => setDropGemMode(false)}
               players={players}
               focusRequest={focusRequest}
+              now={now}
             />
           </div>
           <div className="min-h-0 overflow-y-auto p-4 lg:w-96 lg:max-w-md lg:shrink-0">

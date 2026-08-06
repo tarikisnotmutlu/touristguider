@@ -5,6 +5,14 @@ export interface PlayerStats {
   fatigueLevel: number;
 }
 
+/** A player doc older than this is treated as offline (closed tab, crashed,
+ *  lost network — none of which can announce themselves, so a stopped
+ *  heartbeat is the only signal). Shared between the Admin's player-card
+ *  "Live"/"Last seen" badge and its map marker styling so both agree on
+ *  the same definition of stale. A small multiple of useSyncTelemetry's 5s
+ *  heartbeat. */
+export const PLAYER_STALE_MS = 15 * 1000;
+
 /** Firestore document shape at sessions/{sessionId}/players/{playerName} —
  *  playerName IS the document id, so it isn't duplicated in the body. */
 export interface PlayerTelemetry {

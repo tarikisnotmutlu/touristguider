@@ -12,7 +12,7 @@ import { dayColor } from "@/lib/dayColors";
 import { pointBefore } from "@/lib/dayHelpers";
 import { playerColor } from "@/lib/playerColor";
 import type { HiddenGem, LatLng, Trip } from "@/lib/types";
-import type { NamedPlayerTelemetry } from "@/lib/telemetry";
+import { PLAYER_STALE_MS, type NamedPlayerTelemetry } from "@/lib/telemetry";
 import { createStepMarkerEl, createStartMarkerEl, createGemMarkerEl } from "../MapMarkers";
 
 // Same worker-URL fix as the main player-facing MapView — see that file for
@@ -66,6 +66,7 @@ export default function AdminMapPane({
   onExitDropGemMode,
   players,
   focusRequest,
+  now,
 }: {
   sessionId: string;
   trip: Trip;
@@ -75,6 +76,13 @@ export default function AdminMapPane({
   onExitDropGemMode: () => void;
   players: NamedPlayerTelemetry[];
   focusRequest: FocusRequest | null;
+  /** Ticking clock from the parent (re-rendered every couple seconds) —
+   *  passed in rather than read locally so a player's marker flips from
+   *  live to "last seen" purely from time passing, not only when a new
+   *  Firestore write happens to re-trigger the players effect below (a
+   *  closed tab never writes again, so without this the marker would stay
+   *  "live" styled forever). */
+  now: number;
 }) {
   const [pending, setPending] = useState<PendingGem | null>(null);
   const [selectedGemId, setSelectedGemId] = useState<string | null>(null);
@@ -269,11 +277,13 @@ export default function AdminMapPane({
       const color = p.color ?? playerColor(p.playerName);
       // Missing locationLive means a doc written before this field existed —
       // treat that the same as live, matching the old (lat/lng-always-fresh)
-      // behavior for those docs.
-      const isLive = p.locationLive !== false;
+      // behavior for those docs. Also folds in time-based staleness — a
+      // closed/crashed tab stops writing entirely, so locationLive alone
+      // would stay stuck at whatever it was last set to (true) forever;
+      // `now` (ticking from the parent) is what actually catches that.
+      const isLive = p.locationLive !== false && now - p.timestamp <= PLAYER_STALE_MS;
       const el = document.createElement("div");
       el.className = "flex flex-col items-center gap-1";
-      el.style.opacity = isLive ? "1" : "0.6";
       el.innerHTML = isLive
         ? `
         <div style="width:16px;height:16px;border-radius:9999px;background:${color};border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>
@@ -283,9 +293,16 @@ export default function AdminMapPane({
         <div style="width:14px;height:14px;border-radius:9999px 9999px 9999px 2px;transform:rotate(-45deg);background:${color};border:2px dashed white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>
         <div style="font-size:11px;font-weight:600;color:#57534e;background:rgba(255,255,255,0.9);padding:1px 6px;border-radius:9999px;white-space:nowrap;border:1.5px dashed ${color}">${p.playerName} · last seen</div>
       `;
-      playerMarkersRef.current[p.playerName] = new maplibregl.Marker({ element: el, anchor: "bottom" })
+      // MapLibre's own Marker._update() writes element.style.opacity on every
+      // position tick (defaulting to "1" unless told otherwise), silently
+      // clobbering a plain `el.style.opacity` assignment made before
+      // construction — setOpacity() on the marker INSTANCE is the only
+      // assignment that actually survives.
+      const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([p.lng as number, p.lat as number])
+        .setOpacity(isLive ? "1" : "0.6")
         .addTo(map);
+      playerMarkersRef.current[p.playerName] = marker;
     });
 
     const newlyLocated = located.filter((p) => !seenLocatedPlayersRef.current.has(p.playerName));
@@ -305,7 +322,10 @@ export default function AdminMapPane({
     }
     playersEverRenderedRef.current = true;
     seenLocatedPlayersRef.current = new Set(located.map((p) => p.playerName));
-  }, [players]);
+    // `now` deliberately in deps — see the `isLive` comment above; every
+    // other consequence of this effect (fitBounds) is idempotent against a
+    // now-only re-run since seenLocatedPlayersRef is already up to date.
+  }, [players, now]);
 
   // ---- click-to-focus: fly the camera to a player's live location when
   // their card is clicked in the sidebar ----
