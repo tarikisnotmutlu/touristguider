@@ -9,15 +9,23 @@ import { playerDocRef, playerOverridesCollection, playerOverrideDocRef } from "@
 import { playerColor } from "@/lib/playerColor";
 import type { GmOverride } from "@/lib/telemetry";
 
-const TELEMETRY_POST_MS = 20000;
+// Purely a stats/timestamp heartbeat now — location no longer waits on
+// this. Hunger/thirst/fatigue drift slowly and aren't time-critical the
+// way a moving dot on the Admin's map is, so a few seconds of staleness
+// there is fine; this also keeps `timestamp` fresh (for the admin's
+// live/stale badge) even while someone's standing still.
+const TELEMETRY_HEARTBEAT_MS = 5000;
 
 /**
- * The traveler-side half of the Admin architecture: periodically
- * writes this browser's live location + RPG stats to
- * sessions/{sessionId}/players/{playerName} for the admin dashboard's live
- * map and player cards, and listens in real time (onSnapshot, no polling)
- * on .../players/{playerName}/overrides for any GM actions queued against
- * this player — applying each one locally via
+ * The traveler-side half of the Admin architecture: writes this browser's
+ * live location + RPG stats to sessions/{sessionId}/players/{playerName}
+ * for the admin dashboard's live map and player cards. Location is posted
+ * the instant a new GPS fix comes in (see the store subscription below) —
+ * not on a polling delay — so the Admin's map is as close to real-time as
+ * the device's own GPS updates allow; a short heartbeat interval covers
+ * stats-only drift in between fixes. Also listens in real time (onSnapshot,
+ * no polling) on .../players/{playerName}/overrides for any GM actions
+ * queued against this player — applying each one locally via
  * useJourneyStore.applyGmOverride (which also surfaces the GmToast) the
  * moment it lands, then deleting the doc so it isn't replayed. Also watches
  * this player's own doc so an Admin deletion (a "kick") can be detected and
@@ -74,7 +82,19 @@ export function useSyncTelemetry() {
     }
 
     postTelemetry();
-    const postInterval = setInterval(postTelemetry, TELEMETRY_POST_MS);
+    const postInterval = setInterval(postTelemetry, TELEMETRY_HEARTBEAT_MS);
+
+    // Event-driven, not polled: fires the instant JourneyEngine's
+    // watchPosition callback updates liveLocation, so a moving dot reaches
+    // the Admin's map as fast as the round trip to Firestore allows —
+    // never waiting on the heartbeat above. setLiveLocation always writes a
+    // fresh object, so reference inequality alone is enough to detect a
+    // real update.
+    const unsubLocation = useJourneyStore.subscribe((state, prevState) => {
+      if (state.liveLocation && state.liveLocation !== prevState.liveLocation) {
+        postTelemetry();
+      }
+    });
 
     const unsubOverrides = onSnapshot(playerOverridesCollection(sessionId, playerName), (snap) => {
       if (evicted) return;
@@ -99,10 +119,12 @@ export function useSyncTelemetry() {
       if (!hasSeenDocExist) return;
       evicted = true;
 
-      // Stop everything first — geolocation watch, telemetry beat, override
-      // listener — so nothing keeps running (or re-creates the deleted doc)
-      // while the alert below is blocking on the user.
+      // Stop everything first — geolocation watch, telemetry beat, location
+      // subscription, override listener — so nothing keeps running (or
+      // re-creates the deleted doc) while the alert below is blocking on
+      // the user.
       clearInterval(postInterval);
+      unsubLocation();
       unsubOverrides();
       unsubSelf();
       useJourneyStore.getState().stopDay();
@@ -119,6 +141,7 @@ export function useSyncTelemetry() {
 
     return () => {
       clearInterval(postInterval);
+      unsubLocation();
       unsubOverrides();
       unsubSelf();
     };

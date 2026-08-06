@@ -116,12 +116,12 @@ export default function JourneyEngine() {
           useJourneyStore.getState().setLocationPermissionDenied(true);
         }
       },
-      // A first GPS fix (especially indoors/high-accuracy) can genuinely
-      // take longer than the old 15s budget, and 5s of cache reuse forced a
-      // brand new fix on almost every tick — both made a temporarily weak
-      // signal look identical to "permission denied" from the UI's
-      // perspective. More slack here, not less accuracy.
-      { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }
+      // maximumAge: 0 — never reuse a cached fix, so every update pushed to
+      // the Admin is as fresh as the device's GPS can produce; the generous
+      // timeout (a first fix, especially indoors/high-accuracy, can
+      // genuinely take a while) is what actually prevents false "stuck"
+      // states, not stale-cache tolerance.
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
     );
     useJourneyStore.getState().setWatchId(id);
 
