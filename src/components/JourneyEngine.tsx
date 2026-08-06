@@ -106,10 +106,22 @@ export default function JourneyEngine() {
           .getState()
           .setLiveLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
-      () => {
-        // Silently ignore — the map just won't show a live dot without permission.
+      (err) => {
+        // PERMISSION_DENIED is the one case worth telling the visitor about
+        // (their "waiting for location…" would otherwise sit stuck forever
+        // with no explanation) — POSITION_UNAVAILABLE/TIMEOUT are usually
+        // transient (weak signal, still acquiring a first fix) and
+        // watchPosition itself keeps retrying, so those stay silent.
+        if (err.code === err.PERMISSION_DENIED) {
+          useJourneyStore.getState().setLocationPermissionDenied(true);
+        }
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      // A first GPS fix (especially indoors/high-accuracy) can genuinely
+      // take longer than the old 15s budget, and 5s of cache reuse forced a
+      // brand new fix on almost every tick — both made a temporarily weak
+      // signal look identical to "permission denied" from the UI's
+      // perspective. More slack here, not less accuracy.
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }
     );
     useJourneyStore.getState().setWatchId(id);
 

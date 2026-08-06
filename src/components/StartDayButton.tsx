@@ -8,6 +8,7 @@ export default function StartDayButton() {
   const startDay = useJourneyStore((s) => s.startDay);
   const stopDay = useJourneyStore((s) => s.stopDay);
   const liveLocation = useJourneyStore((s) => s.liveLocation);
+  const locationPermissionDenied = useJourneyStore((s) => s.locationPermissionDenied);
 
   return (
     <motion.button
@@ -28,7 +29,11 @@ export default function StartDayButton() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sage-500 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-sage-600" />
           </span>
-          {liveLocation ? "Live tracking — tap to end day" : "Waiting for location…"}
+          {liveLocation
+            ? "Live tracking — tap to end day"
+            : locationPermissionDenied
+              ? "Location blocked — enable it in your phone's settings"
+              : "Waiting for location…"}
         </>
       ) : (
         <>▶ Start Day</>

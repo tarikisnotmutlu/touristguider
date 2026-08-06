@@ -26,6 +26,7 @@ export default function HiddenGemModal() {
   const showGemHint = useJourneyStore((s) => s.showGemHint);
   const unlockedGem = useJourneyStore((s) => s.unlockedGem);
   const clearGemUnlock = useJourneyStore((s) => s.clearGemUnlock);
+  const locationPermissionDenied = useJourneyStore((s) => s.locationPermissionDenied);
 
   const gem = trip.hiddenGems.find((g) => g.id === activeGemId) ?? null;
   const [erroredForGemId, setErroredForGemId] = useState<string | null>(null);
@@ -48,27 +49,47 @@ export default function HiddenGemModal() {
         return;
       }
 
+      function resolveAgainst(point: { lat: number; lng: number }) {
+        const d = haversineMeters(point, { lat: gem!.lat, lng: gem!.lng });
+        if (d <= radiusM) {
+          triggerGemUnlock(gemId, note, imageSrc, driveSecretUrl);
+        } else {
+          showGemHint();
+        }
+        setActiveGemId(null);
+      }
+
+      // JourneyEngine's watchPosition has been continuously tracking
+      // position since the app loaded (see its own effect) — reuse that
+      // instead of firing a brand new, strict one-shot GPS request here.
+      // The old code always did the latter, which regularly timed out
+      // (10s, no cached-fix tolerance) even on a phone with location
+      // fully enabled and already tracking fine elsewhere in the app,
+      // showing "enable location access" for what was really just a slow
+      // GPS lock, not a permission problem.
+      const liveLocation = useJourneyStore.getState().liveLocation;
+      if (liveLocation) {
+        resolveAgainst(liveLocation);
+        return;
+      }
+
       if (!navigator.geolocation) {
         setErroredForGemId(gemId);
         return;
       }
+      // Only reached if the continuous watch genuinely has no fix yet —
+      // fall back to a one-shot request with the same generous tolerances
+      // as the watch, rather than the old much stricter ones.
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const d = haversineMeters(
-            { lat: pos.coords.latitude, lng: pos.coords.longitude },
-            { lat: gem.lat, lng: gem.lng }
-          );
-          if (d <= radiusM) {
-            triggerGemUnlock(gemId, note, imageSrc, driveSecretUrl);
-          } else {
-            showGemHint();
-          }
-          setActiveGemId(null);
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          useJourneyStore.getState().setLiveLocation(loc);
+          resolveAgainst(loc);
         },
         () => {
           setErroredForGemId(gemId);
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
       );
     });
   }, [gem, triggerGemUnlock, showGemHint, setActiveGemId]);
@@ -95,7 +116,9 @@ export default function HiddenGemModal() {
             >
               <div className="text-3xl">🧭</div>
               <p className="mt-3 text-sm text-stone-500">
-                Couldn&apos;t get your location — enable location access to unlock this gem.
+                {locationPermissionDenied
+                  ? "Location access is blocked — enable it for this site in your phone's settings to unlock this gem."
+                  : "Still finding your location — give it a moment and try again."}
               </p>
               <button
                 onClick={() => setActiveGemId(null)}

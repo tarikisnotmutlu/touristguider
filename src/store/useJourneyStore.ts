@@ -94,6 +94,13 @@ interface JourneyState {
   dayStarted: boolean;
   liveLocation: LatLng | null;
   watchId: number | null;
+  /** True once the browser reports the visitor explicitly denied (or has
+   *  previously denied) the location permission prompt — distinct from
+   *  "no fix yet" so the UI can say "location blocked, check your phone's
+   *  settings" instead of an indefinite "waiting for location…" that never
+   *  explains why it's stuck. Cleared the moment a real position comes in. */
+  locationPermissionDenied: boolean;
+  setLocationPermissionDenied: (denied: boolean) => void;
   startDay: () => void;
   /** Ends the RPG "day" (fatigue/hunger decay pacing, gem/arrival
    *  geofencing eligibility) — deliberately does NOT touch the geolocation
@@ -196,6 +203,8 @@ export const useJourneyStore = create<JourneyState>()(
       dayStarted: false,
       liveLocation: null,
       watchId: null,
+      locationPermissionDenied: false,
+      setLocationPermissionDenied: (denied) => set({ locationPermissionDenied: denied }),
       startDay: () => set({ dayStarted: true }),
       stopDay: () => set({ dayStarted: false, restingStepId: null }),
       stopLocationSharing: () => {
@@ -206,7 +215,10 @@ export const useJourneyStore = create<JourneyState>()(
         set({ watchId: null, liveLocation: null });
       },
       setWatchId: (id) => set({ watchId: id }),
-      setLiveLocation: (loc) => set({ liveLocation: loc }),
+      // A fresh position always means permission is fine, whatever it was
+      // reported as before (e.g. a stale denial from before the visitor
+      // re-enabled it in their phone's settings).
+      setLiveLocation: (loc) => set({ liveLocation: loc, locationPermissionDenied: loc ? false : get().locationPermissionDenied }),
 
       fatigue: 0,
       hunger: 100,
